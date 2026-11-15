@@ -1,0 +1,38 @@
+
+name: omr_pdf_generator
+description: "Offline OMR PDF Generator"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^3.5.0
+  file_picker: ^13.3.3
+  excel: ^4.0.6
+  barcode: ^2.2.9
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  path_provider: ^2.1.6
+  shared_preferences: ^2.5.6
+  uuid: ^4.6.0
+  path: ^1.9.1
+  archive: ^3.6.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/

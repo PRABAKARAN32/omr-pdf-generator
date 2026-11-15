@@ -1,0 +1,3718 @@
+PROJECT SOURCE SNAPSHOT
+=======================
+
+========== PROJECT STRUCTURE ==========
+lib/app.dart
+lib/core/constants/app_constants.dart
+lib/core/routing/app_router.dart
+lib/core/theme/app_theme.dart
+lib/core/utils/file_utils.dart
+lib/features/barcode/models/barcode_config.dart
+lib/features/barcode/models/barcode_configuration.dart
+lib/features/barcode/providers/barcode_configuration_provider.dart
+lib/features/barcode/screens/barcode_configuration_screen.dart
+lib/features/barcode/services/barcode_service.dart
+lib/features/client/models/job_client_details.dart
+lib/features/client/providers/job_session_provider.dart
+lib/features/client/screens/new_job_screen.dart
+lib/features/dashboard/providers/dashboard_provider.dart
+lib/features/dashboard/screens/dashboard_screen.dart
+lib/features/dashboard/widgets/jobs_table.dart
+lib/features/dashboard/widgets/job_summary_card.dart
+lib/features/excel_import/models/excel_data.dart
+lib/features/excel_import/providers/excel_provider.dart
+lib/features/excel_import/screens/excel_import_screen.dart
+lib/features/excel_import/services/excel_service.dart
+lib/features/excel_import/widgets/excel_data_table.dart
+lib/features/excel_import/widgets/field_selection_widget.dart
+lib/features/job_management/models/job_info.dart
+lib/features/job_management/providers/job_provider.dart
+lib/features/job_management/services/job_storage_service.dart
+lib/features/layout_designer/models/layout_configuration.dart
+lib/features/layout_designer/providers/layout_configuration_provider.dart
+lib/features/layout_designer/providers/layout_warnings_provider.dart
+lib/features/layout_designer/screens/layout_designer_screen.dart
+lib/features/layout_designer/widgets/a4_page_preview.dart
+lib/features/layout_designer/widgets/layout_controls.dart
+lib/features/pdf_generation/providers/pdf_provider.dart
+lib/features/pdf_generation/screens/pdf_preview_screen.dart
+lib/features/pdf_generation/services/pdf_generation_service.dart
+lib/main.dart
+lib/shared/models/app_error.dart
+lib/shared/providers/app_settings_provider.dart
+lib/shared/widgets/app_button.dart
+lib/shared/widgets/app_sidebar.dart
+lib/shared/widgets/loading_widget.dart
+test/widget_test.dart
+
+========== PUBSPEC ==========
+
+name: omr_pdf_generator
+description: "Offline OMR PDF Generator"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^3.5.0
+  file_picker: ^13.3.3
+  excel: ^4.0.6
+  barcode: ^2.2.9
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  path_provider: ^2.1.6
+  shared_preferences: ^2.5.6
+  uuid: ^4.6.0
+  path: ^1.9.1
+  archive: ^3.6.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+
+========== ALL DART SOURCE FILES ==========
+
+==================================================
+FILE: lib/app.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'core/theme/app_theme.dart';
+
+import 'features/dashboard/screens/dashboard_screen.dart';
+
+import 'features/client/screens/new_job_screen.dart';
+import 'features/client/providers/job_session_provider.dart';
+
+import 'features/excel_import/screens/excel_import_screen.dart';
+import 'features/excel_import/providers/excel_provider.dart';
+
+import 'features/barcode/screens/barcode_configuration_screen.dart';
+import 'features/barcode/providers/barcode_configuration_provider.dart';
+
+import 'features/layout_designer/screens/layout_designer_screen.dart';
+import 'features/layout_designer/providers/layout_configuration_provider.dart';
+
+import 'shared/widgets/app_sidebar.dart';
+
+class OMRPdfGeneratorApp extends StatelessWidget {
+  const OMRPdfGeneratorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'OMR PDF Generator',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const AppShell(),
+    );
+  }
+}
+
+class AppShell extends ConsumerStatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  int selectedIndex = 0;
+
+  static const List<String> pageTitles = [
+    'Dashboard',
+    'New Job',
+    'Excel Import',
+    'Barcode Configuration',
+    'PDF Layout Designer',
+    'PDF Preview',
+  ];
+
+  void _goToPage(int index) {
+    if (index < 0 || index >= pageTitles.length) return;
+
+    setState(() {
+      selectedIndex = index;
+    });
+  }
+
+  void _startNewProject() {
+    ref.read(jobSessionProvider.notifier).clearSession();
+    ref.read(excelProvider.notifier).reset();
+    ref.read(barcodeConfigurationProvider.notifier).reset();
+    ref.read(layoutConfigurationProvider.notifier).reset();
+
+    _goToPage(1);
+  }
+
+  Widget _buildPlaceholderPage({
+    required String title,
+    required String description,
+    required VoidCallback onBack,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 12),
+            Text(description, textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = <Widget>[
+      // 0 - Dashboard
+      DashboardScreen(onNewProject: _startNewProject),
+
+      // 1 - New Job
+      NewJobScreen(onBack: () => _goToPage(0), onContinue: () => _goToPage(2)),
+
+      // 2 - Excel Import
+      ExcelImportScreen(onBack: () => _goToPage(1), onNext: () => _goToPage(3)),
+
+      // 3 - Barcode Configuration
+      BarcodeConfigurationScreen(
+        onBack: () => _goToPage(2),
+        onNext: () => _goToPage(4),
+      ),
+
+      // 4 - PDF Layout Designer
+      LayoutDesignerScreen(
+        onBack: () => _goToPage(3),
+        onNext: () => _goToPage(5),
+      ),
+
+      // 5 - PDF Preview
+      _buildPlaceholderPage(
+        title: 'PDF Preview',
+        description: 'The PDF preview and generation functionality will be implemented later.',
+        onBack: () => _goToPage(4),
+      ),
+    ];
+
+    return Scaffold(
+      body: Row(
+        children: [
+          AppSidebar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: _goToPage,
+          ),
+          Expanded(
+            child: Container(
+              color: AppTheme.background,
+              child: IndexedStack(index: selectedIndex, children: pages),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/core/constants/app_constants.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/core/routing/app_router.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/core/theme/app_theme.dart
+==================================================
+import 'package:flutter/material.dart';
+
+class AppTheme {
+  AppTheme._();
+
+  static const Color primary = Color(0xFF4938CC);
+  static const Color secondary = Color(0xFF087F73);
+  static const Color accent = Color(0xFFF47716);
+  static const Color background = Color(0xFFF5F3FF);
+  static const Color surface = Colors.white;
+  static const Color textPrimary = Color(0xFF24213D);
+  static const Color textSecondary = Color(0xFF77738A);
+
+  static ThemeData get lightTheme {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: background,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        primary: primary,
+        secondary: secondary,
+        surface: surface,
+      ),
+      fontFamily: 'Arial',
+      appBarTheme: const AppBarTheme(
+        backgroundColor: surface,
+        foregroundColor: textPrimary,
+        elevation: 0,
+        centerTitle: false,
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.06),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFFFAF8FF),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFDCD5F5)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFDCD5F5)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: primary, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/core/utils/file_utils.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/barcode/models/barcode_config.dart
+==================================================
+enum BarcodeFormat { code32, code39, code128 }
+
+extension BarcodeFormatDetails on BarcodeFormat {
+  String get label {
+    switch (this) {
+      case BarcodeFormat.code32:
+        return 'Code 32';
+      case BarcodeFormat.code39:
+        return 'Code 39';
+      case BarcodeFormat.code128:
+        return 'Code 128';
+    }
+  }
+
+  String get value => name;
+}
+
+class BarcodeConfiguration {
+  final BarcodeFormat format;
+  final String startingNumber;
+
+  const BarcodeConfiguration({
+    this.format = BarcodeFormat.code128,
+    this.startingNumber = '',
+  });
+
+  BarcodeConfiguration copyWith({
+    BarcodeFormat? format,
+    String? startingNumber,
+  }) {
+    return BarcodeConfiguration(
+      format: format ?? this.format,
+      startingNumber: startingNumber ?? this.startingNumber,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'format': format.value, 'startingNumber': startingNumber};
+  }
+}
+
+
+==================================================
+FILE: lib/features/barcode/models/barcode_configuration.dart
+==================================================
+enum BarcodeFormat { code32, code39, code128 }
+
+extension BarcodeFormatDetails on BarcodeFormat {
+  String get label {
+    switch (this) {
+      case BarcodeFormat.code32:
+        return 'Code 32';
+      case BarcodeFormat.code39:
+        return 'Code 39';
+      case BarcodeFormat.code128:
+        return 'Code 128';
+    }
+  }
+
+  String get value => name;
+}
+
+class BarcodeConfiguration {
+  final BarcodeFormat format;
+  final String startingNumber;
+
+  const BarcodeConfiguration({
+    this.format = BarcodeFormat.code128,
+    this.startingNumber = '',
+  });
+
+  BarcodeConfiguration copyWith({
+    BarcodeFormat? format,
+    String? startingNumber,
+  }) {
+    return BarcodeConfiguration(
+      format: format ?? this.format,
+      startingNumber: startingNumber ?? this.startingNumber,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'format': format.value, 'startingNumber': startingNumber};
+  }
+
+  factory BarcodeConfiguration.fromJson(Map<String, dynamic> json) {
+    return BarcodeConfiguration(
+      format: BarcodeFormat.values.firstWhere(
+        (format) => format.value == json['format'],
+        orElse: () => BarcodeFormat.code128,
+      ),
+      startingNumber: json['startingNumber']?.toString() ?? '',
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/barcode/providers/barcode_configuration_provider.dart
+==================================================
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/barcode_configuration.dart';
+
+final barcodeConfigurationProvider =
+    NotifierProvider<BarcodeConfigurationNotifier, BarcodeConfiguration>(
+      BarcodeConfigurationNotifier.new,
+    );
+
+class BarcodeConfigurationNotifier extends Notifier<BarcodeConfiguration> {
+  @override
+  BarcodeConfiguration build() {
+    return const BarcodeConfiguration();
+  }
+
+  void updateFormat(BarcodeFormat format) {
+    state = state.copyWith(format: format);
+  }
+
+  void updateStartingNumber(String number) {
+    state = state.copyWith(startingNumber: number);
+  }
+
+  void reset() {
+    state = const BarcodeConfiguration();
+  }
+}
+
+
+==================================================
+FILE: lib/features/barcode/screens/barcode_configuration_screen.dart
+==================================================
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../excel_import/providers/excel_provider.dart';
+import '../models/barcode_configuration.dart';
+import '../providers/barcode_configuration_provider.dart';
+
+class BarcodeConfigurationScreen extends ConsumerStatefulWidget {
+  final VoidCallback onBack;
+  final VoidCallback onNext;
+
+  const BarcodeConfigurationScreen({
+    super.key,
+    required this.onBack,
+    required this.onNext,
+  });
+
+  @override
+  ConsumerState<BarcodeConfigurationScreen> createState() =>
+      _BarcodeConfigurationScreenState();
+}
+
+class _BarcodeConfigurationScreenState
+    extends ConsumerState<BarcodeConfigurationScreen> {
+  late final TextEditingController _startingNumberController;
+  late final ProviderSubscription<BarcodeConfiguration> _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final initialConfiguration = ref.read(barcodeConfigurationProvider);
+
+    _startingNumberController = TextEditingController(
+      text: initialConfiguration.startingNumber,
+    );
+
+    _subscription = ref.listenManual<BarcodeConfiguration>(
+      barcodeConfigurationProvider,
+      (previous, next) {
+        if (_startingNumberController.text != next.startingNumber) {
+          _startingNumberController.value = TextEditingValue(
+            text: next.startingNumber,
+            selection: TextSelection.collapsed(
+              offset: next.startingNumber.length,
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _subscription.close();
+    _startingNumberController.dispose();
+    super.dispose();
+  }
+
+  String _formatNumber(BigInt number, int width) {
+    return number.toString().padLeft(width, '0');
+  }
+
+  String? _validateConfiguration({
+    required BarcodeFormat format,
+    required String startingNumber,
+    required int recordCount,
+  }) {
+    if (recordCount <= 0) {
+      return 'No candidate records are available. Please import Excel data.';
+    }
+
+    if (startingNumber.isEmpty) {
+      return 'Starting barcode number is required.';
+    }
+
+    if (!RegExp(r'^[0-9]+$').hasMatch(startingNumber)) {
+      return 'Only numeric starting numbers are supported.';
+    }
+
+    if (format == BarcodeFormat.code32 && startingNumber.length > 8) {
+      return 'Code 32 supports a maximum of 8 input digits.';
+    }
+
+    if (startingNumber.length > 18) {
+      return 'Starting number cannot exceed 18 digits.';
+    }
+
+    final start = BigInt.tryParse(startingNumber);
+
+    if (start == null) {
+      return 'Please enter a valid starting number.';
+    }
+
+    final last = start + BigInt.from(recordCount - 1);
+
+    if (format == BarcodeFormat.code32 && last > BigInt.from(99999999)) {
+      return 'The generated Code 32 sequence exceeds its 8-digit range.';
+    }
+
+    if (last.toString().length > 18) {
+      return 'The generated barcode sequence exceeds the supported range.';
+    }
+
+    return null;
+  }
+
+  void _continue() {
+    final configuration = ref.read(barcodeConfigurationProvider);
+    final excelData = ref.read(excelProvider).importedData;
+
+    if (excelData == null) {
+      _showMessage('Please import Excel data first.');
+      return;
+    }
+
+    final error = _validateConfiguration(
+      format: configuration.format,
+      startingNumber: configuration.startingNumber,
+      recordCount: excelData.recordCount,
+    );
+
+    if (error != null) {
+      _showMessage(error);
+      return;
+    }
+
+    widget.onNext();
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildFormatOption({
+    required BarcodeFormat format,
+    required String description,
+    required BarcodeFormat selectedFormat,
+    required ValueChanged<BarcodeFormat> onSelected,
+  }) {
+    final isSelected = selectedFormat == format;
+
+    return InkWell(
+      onTap: () => onSelected(format),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Colors.grey.shade400,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Radio<BarcodeFormat>(
+              value: format,
+              groupValue: selectedFormat,
+              onChanged: (value) {
+                if (value != null) onSelected(value);
+              },
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    format.label,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    description,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSequencePreview({
+    required BarcodeConfiguration configuration,
+    required int recordCount,
+  }) {
+    final startText = configuration.startingNumber;
+
+    if (startText.isEmpty ||
+        !RegExp(r'^[0-9]+$').hasMatch(startText) ||
+        recordCount <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    final start = BigInt.tryParse(startText);
+
+    if (start == null) {
+      return const SizedBox.shrink();
+    }
+
+    final width = configuration.format == BarcodeFormat.code32
+        ? 8
+        : startText.length;
+
+    final normalizedStart = BigInt.parse(startText.padLeft(width, '0'));
+
+    final last = normalizedStart + BigInt.from(recordCount - 1);
+
+    if (configuration.format == BarcodeFormat.code32 &&
+        last > BigInt.from(99999999)) {
+      return const SizedBox.shrink();
+    }
+
+    if (last.toString().length > 18) {
+      return const SizedBox.shrink();
+    }
+
+    final firstValue = _formatNumber(normalizedStart, width);
+    final lastValue = _formatNumber(last, width);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Barcode Sequence Preview',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 14),
+          Text('First barcode: $firstValue'),
+          const SizedBox(height: 6),
+          Text('Last barcode: $lastValue'),
+          const SizedBox(height: 6),
+          Text('Total barcodes: $recordCount'),
+          if (configuration.format == BarcodeFormat.code32) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Code 32 will use an 8-digit numeric input and calculate '
+              'its required check digit during barcode encoding.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configuration = ref.watch(barcodeConfigurationProvider);
+    final excelData = ref.watch(excelProvider).importedData;
+    final recordCount = excelData?.recordCount ?? 0;
+
+    final notifier = ref.read(barcodeConfigurationProvider.notifier);
+
+    final descriptions = {
+      BarcodeFormat.code32:
+          'Numeric format with an 8-digit data value and check digit.',
+      BarcodeFormat.code39: 'Standard alphanumeric barcode format.',
+      BarcodeFormat.code128:
+          'Compact barcode format for numeric and alphanumeric data.',
+    };
+
+    final validationError = _validateConfiguration(
+      format: configuration.format,
+      startingNumber: configuration.startingNumber,
+      recordCount: recordCount,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Text(
+                'Barcode Configuration',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          Text(
+            'Choose a barcode format and define the starting number.',
+            style: TextStyle(color: Colors.grey.shade700),
+          ),
+
+          const SizedBox(height: 28),
+
+          const Text(
+            '1. Select Barcode Algorithm',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 12),
+
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: BarcodeFormat.values.map((format) {
+              return _buildFormatOption(
+                format: format,
+                description: descriptions[format]!,
+                selectedFormat: configuration.format,
+                onSelected: notifier.updateFormat,
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 28),
+
+          const Text(
+            '2. Starting Barcode Number',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: 350,
+            child: TextField(
+              controller: _startingNumberController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(18),
+              ],
+              decoration: InputDecoration(
+                hintText: 'Example: 50001',
+                border: const OutlineInputBorder(),
+                helperText: configuration.format == BarcodeFormat.code32
+                    ? 'Code 32 accepts up to 8 input digits.'
+                    : 'Numeric sequence starting value.',
+              ),
+              onChanged: notifier.updateStartingNumber,
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          Row(
+            children: [
+              const Text(
+                'Candidate records:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 8),
+              Text(recordCount.toString()),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          _buildSequencePreview(
+            configuration: configuration,
+            recordCount: recordCount,
+          ),
+
+          if (validationError != null) ...[
+            const SizedBox(height: 12),
+            Text(validationError, style: const TextStyle(color: Colors.red)),
+          ],
+
+          const Spacer(),
+
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back'),
+              ),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: validationError == null ? _continue : null,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Next: Layout Designer'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/barcode/services/barcode_service.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/client/models/job_client_details.dart
+==================================================
+class JobClientDetails {
+  final String jobId;
+  final String clientName;
+  final DateTime orderDate;
+  final DateTime createdAt;
+
+  const JobClientDetails({
+    required this.jobId,
+    required this.clientName,
+    required this.orderDate,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'jobId': jobId,
+      'clientName': clientName,
+      'orderDate': orderDate.toIso8601String(),
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  factory JobClientDetails.fromJson(Map<String, dynamic> json) {
+    return JobClientDetails(
+      jobId: json['jobId'] as String,
+      clientName: json['clientName'] as String,
+      orderDate: DateTime.parse(json['orderDate'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/client/providers/job_session_provider.dart
+==================================================
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
+import '../models/job_client_details.dart';
+
+final jobSessionProvider =
+    NotifierProvider<JobSessionNotifier, JobClientDetails?>(
+      JobSessionNotifier.new,
+    );
+
+class JobSessionNotifier extends Notifier<JobClientDetails?> {
+  @override
+  JobClientDetails? build() {
+    return null;
+  }
+
+  void startJob({required String clientName, required DateTime orderDate}) {
+    state = JobClientDetails(
+      jobId: const Uuid().v4(),
+      clientName: clientName.trim(),
+      orderDate: orderDate,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  void clearSession() {
+    state = null;
+  }
+}
+
+
+==================================================
+FILE: lib/features/client/screens/new_job_screen.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/job_session_provider.dart';
+
+class NewJobScreen extends ConsumerStatefulWidget {
+  final VoidCallback onBack;
+  final VoidCallback onContinue;
+
+  const NewJobScreen({
+    super.key,
+    required this.onBack,
+    required this.onContinue,
+  });
+
+  @override
+  ConsumerState<NewJobScreen> createState() => _NewJobScreenState();
+}
+
+class _NewJobScreenState extends ConsumerState<NewJobScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _clientNameController = TextEditingController();
+
+  DateTime _orderDate = DateTime.now();
+
+  @override
+  void dispose() {
+    _clientNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectDate() async {
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: _orderDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (selectedDate != null) {
+      setState(() {
+        _orderDate = selectedDate;
+      });
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
+
+  void _createJob() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    ref
+        .read(jobSessionProvider.notifier)
+        .startJob(
+          clientName: _clientNameController.text,
+          orderDate: _orderDate,
+        );
+
+    widget.onContinue();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 500,
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Back to Dashboard',
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'New Job',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
+                const Text('Enter the client details to start a new job.'),
+
+                const SizedBox(height: 28),
+                const Text('Client Name'),
+                const SizedBox(height: 8),
+
+                TextFormField(
+                  controller: _clientNameController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter client name',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Client name is required';
+                    }
+
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                const Text('Order Placing Date'),
+                const SizedBox(height: 8),
+
+                OutlinedButton(
+                  onPressed: _selectDate,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_today),
+                      const SizedBox(width: 10),
+                      Text(_formatDate(_orderDate)),
+                    ],
+                  ),
+                ),
+
+                const Spacer(),
+
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Back'),
+                    ),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: _createJob,
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const Text('Next: Upload Excel'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/dashboard/providers/dashboard_provider.dart
+==================================================
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../job_management/models/job_info.dart';
+import '../../job_management/services/job_storage_service.dart';
+
+final jobStorageServiceProvider = Provider<JobStorageService>((ref) {
+  return JobStorageService();
+});
+
+final savedJobsProvider = FutureProvider<List<JobInfo>>((ref) async {
+  final storage = ref.watch(jobStorageServiceProvider);
+
+  return storage.getSavedJobs();
+});
+
+
+==================================================
+FILE: lib/features/dashboard/screens/dashboard_screen.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/dashboard_provider.dart';
+import '../../job_management/models/job_info.dart';
+
+class DashboardScreen extends ConsumerWidget {
+  final VoidCallback onNewProject;
+
+  const DashboardScreen({super.key, required this.onNewProject});
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '-';
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+
+    return '$day/$month/$year';
+  }
+
+  Future<void> _deleteJob(
+    BuildContext context,
+    WidgetRef ref,
+    JobInfo job,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Job'),
+        content: Text('Are you sure you want to delete "${job.clientName}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await ref.read(jobStorageServiceProvider).deleteJob(job.id);
+      ref.invalidate(savedJobsProvider);
+    } catch (error) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to delete job: $error')));
+    }
+  }
+
+  Widget _stat(String label, String value) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJobList(
+    BuildContext context,
+    WidgetRef ref,
+    List<JobInfo> jobs,
+  ) {
+    if (jobs.isEmpty) {
+      return const Center(child: Text('No saved jobs found.'));
+    }
+
+    return ListView.separated(
+      itemCount: jobs.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final job = jobs[index];
+
+        return ListTile(
+          title: Text(job.clientName),
+          subtitle: Text(
+            'Order: ${_formatDate(job.orderDate)}'
+            '  |  PDF: ${_formatDate(job.generatedAt)}'
+            '  |  Candidates: ${job.recordCount}'
+            '  |  Barcode: ${job.barcodeFormat}',
+          ),
+          trailing: IconButton(
+            tooltip: 'Delete job',
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: () => _deleteJob(context, ref, job),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final jobsAsync = ref.watch(savedJobsProvider);
+
+    return jobsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stackTrace) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Unable to load jobs: $error'),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: () => ref.invalidate(savedJobsProvider),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+      data: (jobs) {
+        final totalCandidates = jobs.fold<int>(
+          0,
+          (total, job) => total + job.recordCount,
+        );
+
+        final totalPdfs = jobs.where((job) => job.generatedAt != null).length;
+
+        final formats = jobs.map((job) => job.barcodeFormat).toSet().toList();
+
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    'Dashboard',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Refresh',
+                    onPressed: () {
+                      ref.invalidate(savedJobsProvider);
+                    },
+                    icon: const Icon(Icons.refresh),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: onNewProject,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New Project'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              Row(
+                children: [
+                  _stat('Saved Jobs', jobs.length.toString()),
+                  _stat('Candidates', totalCandidates.toString()),
+                  _stat('PDFs Made', totalPdfs.toString()),
+                  _stat(
+                    'Barcode Formats',
+                    formats.isEmpty ? '-' : formats.join(', '),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 25),
+              const Divider(),
+
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'JOB HISTORY',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+
+              Expanded(child: _buildJobList(context, ref, jobs)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/dashboard/widgets/jobs_table.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/dashboard/widgets/job_summary_card.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/excel_import/models/excel_data.dart
+==================================================
+class ExcelImportData {
+  final String fileName;
+  final String sheetName;
+  final List<String> headers;
+  final List<List<String>> rows;
+  final List<String> warnings;
+  final Set<int> includedColumns;
+
+  const ExcelImportData({
+    required this.fileName,
+    required this.sheetName,
+    required this.headers,
+    required this.rows,
+    required this.warnings,
+    required this.includedColumns,
+  });
+
+  int get recordCount => rows.length;
+
+  int get columnCount => headers.length;
+
+  ExcelImportData copyWith({
+    String? fileName,
+    String? sheetName,
+    List<String>? headers,
+    List<List<String>>? rows,
+    List<String>? warnings,
+    Set<int>? includedColumns,
+  }) {
+    return ExcelImportData(
+      fileName: fileName ?? this.fileName,
+      sheetName: sheetName ?? this.sheetName,
+      headers: headers ?? this.headers,
+      rows: rows ?? this.rows,
+      warnings: warnings ?? this.warnings,
+      includedColumns: includedColumns ?? this.includedColumns,
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/excel_import/providers/excel_provider.dart
+==================================================
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/excel_data.dart';
+import '../services/excel_service.dart';
+
+final excelServiceProvider = Provider<ExcelService>((ref) {
+  return ExcelService();
+});
+
+class ExcelImportState {
+  final String? fileName;
+  final Uint8List? fileBytes;
+  final List<String> worksheetNames;
+  final ExcelImportData? importedData;
+  final String? error;
+
+  const ExcelImportState({
+    this.fileName,
+    this.fileBytes,
+    this.worksheetNames = const [],
+    this.importedData,
+    this.error,
+  });
+
+  ExcelImportState copyWith({
+    String? fileName,
+    Uint8List? fileBytes,
+    List<String>? worksheetNames,
+    ExcelImportData? importedData,
+    String? error,
+    bool clearError = false,
+  }) {
+    return ExcelImportState(
+      fileName: fileName ?? this.fileName,
+      fileBytes: fileBytes ?? this.fileBytes,
+      worksheetNames: worksheetNames ?? this.worksheetNames,
+      importedData: importedData ?? this.importedData,
+      error: clearError ? null : (error ?? this.error),
+    );
+  }
+}
+
+final excelProvider = NotifierProvider<ExcelImportNotifier, ExcelImportState>(
+  ExcelImportNotifier.new,
+);
+
+class ExcelImportNotifier extends Notifier<ExcelImportState> {
+  @override
+  ExcelImportState build() {
+    return const ExcelImportState();
+  }
+
+  void selectWorkbook({required String fileName, required Uint8List bytes}) {
+    try {
+      debugPrint('EXCEL: Starting workbook decoding');
+      debugPrint('EXCEL: File = $fileName');
+      debugPrint('EXCEL: Size = ${bytes.length} bytes');
+
+      final service = ref.read(excelServiceProvider);
+      final sheets = service.getWorksheetNames(bytes);
+
+      debugPrint('EXCEL: Worksheets detected = ${sheets.length}');
+      debugPrint('EXCEL: $sheets');
+
+      if (sheets.isEmpty) {
+        throw Exception('No worksheets found in this workbook.');
+      }
+
+      // Automatically import the first worksheet.
+      final firstSheet = sheets.first;
+
+      final data = service.importWorksheet(
+        bytes: bytes,
+        fileName: fileName,
+        sheetName: firstSheet,
+      );
+
+      debugPrint('EXCEL: Imported worksheet = $firstSheet');
+      debugPrint('EXCEL: Headers = ${data.headers.length}');
+      debugPrint('EXCEL: Records = ${data.recordCount}');
+      debugPrint('EXCEL: Warnings = ${data.warnings.length}');
+
+      state = ExcelImportState(
+        fileName: fileName,
+        fileBytes: bytes,
+        worksheetNames: sheets,
+        importedData: data,
+      );
+
+      debugPrint('EXCEL: Workbook loaded successfully');
+    } catch (error, stackTrace) {
+      debugPrint('EXCEL ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      state = ExcelImportState(
+        fileName: fileName,
+        fileBytes: bytes,
+        error: error.toString(),
+      );
+    }
+  }
+
+  void toggleColumn(int columnIndex) {
+    final data = state.importedData;
+
+    if (data == null || columnIndex < 0 || columnIndex >= data.headers.length) {
+      return;
+    }
+
+    final included = Set<int>.from(data.includedColumns);
+
+    if (included.contains(columnIndex)) {
+      included.remove(columnIndex);
+    } else {
+      included.add(columnIndex);
+    }
+
+    state = state.copyWith(
+      importedData: data.copyWith(includedColumns: included),
+    );
+  }
+
+  void selectAllColumns() {
+    final data = state.importedData;
+    if (data == null) return;
+
+    state = state.copyWith(
+      importedData: data.copyWith(
+        includedColumns: Set<int>.from(
+          List.generate(data.headers.length, (index) => index),
+        ),
+      ),
+    );
+  }
+
+  void clearSelection() {
+    final data = state.importedData;
+    if (data == null) return;
+
+    state = state.copyWith(
+      importedData: data.copyWith(includedColumns: <int>{}),
+    );
+  }
+
+  void reset() {
+    state = const ExcelImportState();
+  }
+}
+
+
+==================================================
+FILE: lib/features/excel_import/screens/excel_import_screen.dart
+==================================================
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/excel_provider.dart';
+
+class ExcelImportScreen extends ConsumerStatefulWidget {
+  final VoidCallback onBack;
+  final VoidCallback onNext;
+
+  const ExcelImportScreen({
+    super.key,
+    required this.onBack,
+    required this.onNext,
+  });
+
+  @override
+  ConsumerState<ExcelImportScreen> createState() => _ExcelImportScreenState();
+}
+
+class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
+  bool isPickingFile = false;
+
+  Future<void> _pickExcelFile() async {
+    if (isPickingFile) return;
+
+    setState(() {
+      isPickingFile = true;
+    });
+
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+      );
+
+      if (!mounted || file == null) return;
+
+      final bytes = await file.readAsBytes();
+
+      if (!mounted) return;
+
+      ref
+          .read(excelProvider.notifier)
+          .selectWorkbook(fileName: file.name, bytes: bytes);
+
+      final state = ref.read(excelProvider);
+
+      if (state.error != null) {
+        _showMessage(state.error!);
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage('File selection failed: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isPickingFile = false;
+        });
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildFieldSelection() {
+    final data = ref.watch(excelProvider).importedData;
+
+    if (data == null) {
+      return const SizedBox.shrink();
+    }
+
+    final notifier = ref.read(excelProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Select fields to include',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            TextButton(
+              onPressed: notifier.selectAllColumns,
+              child: const Text('Select All'),
+            ),
+            TextButton(
+              onPressed: notifier.clearSelection,
+              child: const Text('Clear All'),
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: List.generate(data.headers.length, (index) {
+            return SizedBox(
+              width: 210,
+              child: CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(
+                  data.headers[index],
+                  overflow: TextOverflow.ellipsis,
+                ),
+                value: data.includedColumns.contains(index),
+                onChanged: (_) => notifier.toggleColumn(index),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDataPreview() {
+    final data = ref.watch(excelProvider).importedData;
+
+    if (data == null) {
+      return const Center(
+        child: Text('Select an Excel file to preview its data.'),
+      );
+    }
+
+    final includedColumns = data.includedColumns.toList()..sort();
+
+    if (includedColumns.isEmpty) {
+      return const Center(
+        child: Text('Select at least one field to display the preview.'),
+      );
+    }
+
+    if (data.rows.isEmpty) {
+      return const Center(child: Text('No candidate records found.'));
+    }
+
+    return SingleChildScrollView(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: includedColumns.map((index) {
+            return DataColumn(label: Text(data.headers[index]));
+          }).toList(),
+          rows: data.rows.map((row) {
+            return DataRow(
+              cells: includedColumns.map((index) {
+                return DataCell(Text(index < row.length ? row[index] : ''));
+              }).toList(),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWarnings() {
+    final data = ref.watch(excelProvider).importedData;
+
+    if (data == null || data.warnings.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return ExpansionTile(
+      title: Text(
+        '${data.warnings.length} validation warning(s)',
+        style: const TextStyle(color: Colors.orange),
+      ),
+      children: data.warnings.map((warning) {
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.warning_amber, color: Colors.orange),
+          title: Text(warning),
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(excelProvider);
+    final data = state.importedData;
+
+    final canContinue = data != null && data.includedColumns.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Back to New Job',
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.arrow_back),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Excel Import',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: isPickingFile ? null : _pickExcelFile,
+                icon: const Icon(Icons.upload_file),
+                label: Text(isPickingFile ? 'Loading...' : 'Select Excel File'),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Text(
+                  state.fileName ?? 'No file selected',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+
+          if (state.error != null) ...[
+            const SizedBox(height: 12),
+            Text(state.error!, style: const TextStyle(color: Colors.red)),
+          ],
+
+          if (data != null) ...[
+            const SizedBox(height: 20),
+
+            Wrap(
+              spacing: 20,
+              runSpacing: 8,
+              children: [
+                Text('Records: ${data.recordCount}'),
+                Text('Excel Fields: ${data.columnCount}'),
+                Text('Selected Fields: ${data.includedColumns.length}'),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+            _buildFieldSelection(),
+            const Divider(height: 30),
+
+            const Text(
+              'Candidate Data Preview',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+            Expanded(child: _buildDataPreview()),
+            _buildWarnings(),
+          ] else ...[
+            const Expanded(
+              child: Center(
+                child: Text('Upload an Excel file to get started.'),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back'),
+              ),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: canContinue ? widget.onNext : null,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Next: Barcode'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/excel_import/services/excel_service.dart
+==================================================
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
+import 'package:excel/excel.dart';
+
+import '../models/excel_data.dart';
+
+class ExcelService {
+  Excel decodeWorkbook(Uint8List bytes) {
+    final inputArchive = ZipDecoder().decodeBytes(bytes);
+    final outputArchive = Archive();
+
+    for (final file in inputArchive.files) {
+      if (file.isFile && file.name == 'xl/_rels/workbook.xml.rels') {
+        final xml = utf8.decode(file.content);
+
+        final correctedXml = xml.replaceAllMapped(
+          RegExp(r'Target="/xl/([^"]+)"'),
+          (match) => 'Target="${match[1]}"',
+        );
+
+        final correctedBytes = utf8.encode(correctedXml);
+
+        outputArchive.addFile(
+          ArchiveFile(file.name, correctedBytes.length, correctedBytes),
+        );
+      } else {
+        outputArchive.addFile(file);
+      }
+    }
+
+    final correctedBytes = ZipEncoder().encode(outputArchive);
+
+    if (correctedBytes == null) {
+      throw Exception('Failed to normalize Excel workbook.');
+    }
+
+    return Excel.decodeBytes(correctedBytes);
+  }
+
+  List<String> getWorksheetNames(Uint8List bytes) {
+    final workbook = decodeWorkbook(bytes);
+    return workbook.tables.keys.toList();
+  }
+
+  ExcelImportData importWorksheet({
+    required Uint8List bytes,
+    required String fileName,
+    required String sheetName,
+    int headerRowIndex = 0,
+  }) {
+    final workbook = decodeWorkbook(bytes);
+    final sheet = workbook.tables[sheetName];
+
+    if (sheet == null) {
+      throw Exception('Worksheet "$sheetName" was not found.');
+    }
+
+    final sourceRows = sheet.rows;
+
+    if (sourceRows.isEmpty ||
+        headerRowIndex < 0 ||
+        headerRowIndex >= sourceRows.length) {
+      throw Exception('The selected worksheet has no valid header row.');
+    }
+
+    // Read headers.
+    final rawHeaders = sourceRows[headerRowIndex].map(_cellToText).toList();
+
+    if (rawHeaders.every((header) => header.isEmpty)) {
+      throw Exception('The selected header row is empty.');
+    }
+
+    // Generate unique column names.
+    final headers = <String>[];
+    final headerCounts = <String, int>{};
+
+    for (var i = 0; i < rawHeaders.length; i++) {
+      var header = rawHeaders[i];
+
+      if (header.isEmpty) {
+        header = 'Column ${i + 1}';
+      }
+
+      final count = (headerCounts[header] ?? 0) + 1;
+      headerCounts[header] = count;
+
+      if (count > 1) {
+        header = '$header ($count)';
+      }
+
+      headers.add(header);
+    }
+
+    final importedRows = <List<String>>[];
+    final warnings = <String>[];
+
+    // Read candidate records after the header row.
+    for (
+      var rowIndex = headerRowIndex + 1;
+      rowIndex < sourceRows.length;
+      rowIndex++
+    ) {
+      final sourceRow = sourceRows[rowIndex];
+
+      final row = List<String>.generate(headers.length, (columnIndex) {
+        if (columnIndex >= sourceRow.length) {
+          return '';
+        }
+
+        return _cellToText(sourceRow[columnIndex]);
+      });
+
+      // Ignore completely empty rows.
+      if (row.every((value) => value.isEmpty)) {
+        continue;
+      }
+
+      // Preserve partially filled rows and report missing values.
+      final emptyColumns = <String>[];
+
+      for (var i = 0; i < row.length; i++) {
+        if (row[i].isEmpty) {
+          emptyColumns.add(headers[i]);
+        }
+      }
+
+      if (emptyColumns.isNotEmpty) {
+        warnings.add(
+          'Row ${rowIndex + 1}: Empty values in '
+          '${emptyColumns.join(', ')}.',
+        );
+      }
+
+      importedRows.add(row);
+    }
+
+    if (importedRows.isEmpty) {
+      throw Exception('No candidate records found in this worksheet.');
+    }
+
+    return ExcelImportData(
+      fileName: fileName,
+      sheetName: sheetName,
+      headers: headers,
+      rows: importedRows,
+      warnings: warnings,
+      includedColumns: Set<int>.from(
+        List.generate(headers.length, (index) => index),
+      ),
+    );
+  }
+
+  String _cellToText(Data? cell) {
+    if (cell == null || cell.value == null) {
+      return '';
+    }
+
+    return cell.value.toString().trim();
+  }
+}
+
+
+==================================================
+FILE: lib/features/excel_import/widgets/excel_data_table.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/excel_import/widgets/field_selection_widget.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/job_management/models/job_info.dart
+==================================================
+class JobInfo {
+  final String id;
+  final String clientName;
+  final DateTime orderDate;
+  final DateTime? generatedAt;
+  final int recordCount;
+  final String barcodeFormat;
+  final String pdfFileName;
+
+  const JobInfo({
+    required this.id,
+    required this.clientName,
+    required this.orderDate,
+    this.generatedAt,
+    required this.recordCount,
+    required this.barcodeFormat,
+    required this.pdfFileName,
+  });
+
+  factory JobInfo.fromJson(Map<String, dynamic> json) {
+    return JobInfo(
+      id: json['id'] as String,
+      clientName: json['clientName'] as String,
+      orderDate: DateTime.parse(json['orderDate'] as String),
+      generatedAt: json['generatedAt'] == null
+          ? null
+          : DateTime.parse(json['generatedAt'] as String),
+      recordCount: (json['recordCount'] as num).toInt(),
+      barcodeFormat: json['barcodeFormat'] as String,
+      pdfFileName: json['pdfFileName'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'clientName': clientName,
+      'orderDate': orderDate.toIso8601String(),
+      'generatedAt': generatedAt?.toIso8601String(),
+      'recordCount': recordCount,
+      'barcodeFormat': barcodeFormat,
+      'pdfFileName': pdfFileName,
+    };
+  }
+}
+
+
+==================================================
+FILE: lib/features/job_management/providers/job_provider.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/job_management/services/job_storage_service.dart
+==================================================
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+
+import '../models/job_info.dart';
+
+class JobStorageService {
+  Future<Directory> _getJobsDirectory() async {
+    final appDirectory = await getApplicationSupportDirectory();
+
+    final jobsDirectory = Directory(
+      '${appDirectory.path}/OMR_PDF_Generator/jobs',
+    );
+
+    if (!await jobsDirectory.exists()) {
+      await jobsDirectory.create(recursive: true);
+    }
+
+    return jobsDirectory;
+  }
+
+  Future<List<JobInfo>> getSavedJobs() async {
+    final jobsDirectory = await _getJobsDirectory();
+
+    final entities = await jobsDirectory.list(followLinks: false).toList();
+
+    final List<JobInfo> jobs = [];
+
+    for (final entity in entities) {
+      if (entity is! Directory) continue;
+
+      final infoFile = File('${entity.path}/job_info.json');
+
+      if (!await infoFile.exists()) continue;
+
+      final content = await infoFile.readAsString();
+
+      final json = jsonDecode(content) as Map<String, dynamic>;
+
+      jobs.add(JobInfo.fromJson(json));
+    }
+
+    jobs.sort((a, b) {
+      final aDate = a.generatedAt ?? a.orderDate;
+      final bDate = b.generatedAt ?? b.orderDate;
+
+      return bDate.compareTo(aDate);
+    });
+
+    return jobs;
+  }
+
+  Future<void> deleteJob(String jobId) async {
+    final jobsDirectory = await _getJobsDirectory();
+
+    // Only allow a single directory name, not an arbitrary path.
+    if (jobId.isEmpty ||
+        jobId.contains('/') ||
+        jobId.contains(r'\') ||
+        jobId == '.' ||
+        jobId == '..') {
+      throw ArgumentError('Invalid job ID.');
+    }
+
+    final jobDirectory = Directory('${jobsDirectory.path}/$jobId');
+
+    if (await jobDirectory.exists()) {
+      await jobDirectory.delete(recursive: true);
+    }
+  }
+}
+
+
+==================================================
+FILE: lib/features/layout_designer/models/layout_configuration.dart
+==================================================
+enum LayoutBoxType { details, barcode }
+
+enum LayoutTextStyle { normal, bold }
+
+class LayoutBox {
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+
+  const LayoutBox({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  LayoutBox copyWith({double? x, double? y, double? width, double? height}) {
+    return LayoutBox(
+      x: x ?? this.x,
+      y: y ?? this.y,
+      width: width ?? this.width,
+      height: height ?? this.height,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'x': x,
+    'y': y,
+    'width': width,
+    'height': height,
+  };
+
+  factory LayoutBox.fromJson(Map<String, dynamic> json) {
+    return LayoutBox(
+      x: (json['x'] as num?)?.toDouble() ?? 0,
+      y: (json['y'] as num?)?.toDouble() ?? 0,
+      width: (json['width'] as num?)?.toDouble() ?? 100,
+      height: (json['height'] as num?)?.toDouble() ?? 100,
+    );
+  }
+}
+
+class LayoutConfiguration {
+  static const double pageWidth = 595.28;
+  static const double pageHeight = 841.89;
+
+  final LayoutBox detailsBox;
+  final LayoutBox barcodeBox;
+  final LayoutBoxType selectedBox;
+
+  final double movementStep;
+  final double detailsFontSize;
+  final double fieldSpacing;
+
+  final bool showBarcodeNumber;
+  final LayoutTextStyle textStyle;
+
+  final bool applyDetailsToAll;
+  final bool applyBarcodeToAll;
+
+  // Key = 1-based PDF page number.
+  // Value = individual barcode position for that page.
+  final Map<int, LayoutBox> barcodePageOverrides;
+
+  const LayoutConfiguration({
+    this.detailsBox = const LayoutBox(x: 35, y: 280, width: 335, height: 180),
+    this.barcodeBox = const LayoutBox(x: 390, y: 325, width: 165, height: 100),
+    this.selectedBox = LayoutBoxType.details,
+    this.movementStep = 2,
+    this.detailsFontSize = 10,
+    this.fieldSpacing = 2,
+    this.showBarcodeNumber = true,
+    this.textStyle = LayoutTextStyle.normal,
+    this.applyDetailsToAll = true,
+    this.applyBarcodeToAll = true,
+    this.barcodePageOverrides = const {},
+  });
+
+  LayoutBox barcodeBoxForPage(int pageNumber) {
+    return barcodePageOverrides[pageNumber] ?? barcodeBox;
+  }
+
+  LayoutConfiguration copyWith({
+    LayoutBox? detailsBox,
+    LayoutBox? barcodeBox,
+    LayoutBoxType? selectedBox,
+    double? movementStep,
+    double? detailsFontSize,
+    double? fieldSpacing,
+    bool? showBarcodeNumber,
+    LayoutTextStyle? textStyle,
+    bool? applyDetailsToAll,
+    bool? applyBarcodeToAll,
+    Map<int, LayoutBox>? barcodePageOverrides,
+  }) {
+    return LayoutConfiguration(
+      detailsBox: detailsBox ?? this.detailsBox,
+      barcodeBox: barcodeBox ?? this.barcodeBox,
+      selectedBox: selectedBox ?? this.selectedBox,
+      movementStep: movementStep ?? this.movementStep,
+      detailsFontSize: detailsFontSize ?? this.detailsFontSize,
+      fieldSpacing: fieldSpacing ?? this.fieldSpacing,
+      showBarcodeNumber: showBarcodeNumber ?? this.showBarcodeNumber,
+      textStyle: textStyle ?? this.textStyle,
+      applyDetailsToAll: applyDetailsToAll ?? this.applyDetailsToAll,
+      applyBarcodeToAll: applyBarcodeToAll ?? this.applyBarcodeToAll,
+      barcodePageOverrides: barcodePageOverrides ?? this.barcodePageOverrides,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'detailsBox': detailsBox.toJson(),
+      'barcodeBox': barcodeBox.toJson(),
+      'selectedBox': selectedBox.name,
+      'movementStep': movementStep,
+      'detailsFontSize': detailsFontSize,
+      'fieldSpacing': fieldSpacing,
+      'showBarcodeNumber': showBarcodeNumber,
+      'textStyle': textStyle.name,
+      'applyDetailsToAll': applyDetailsToAll,
+      'applyBarcodeToAll': applyBarcodeToAll,
+      'barcodePageOverrides': barcodePageOverrides.map(
+        (page, box) => MapEntry(page.toString(), box.toJson()),
+      ),
+    };
+  }
+
+  factory LayoutConfiguration.fromJson(Map<String, dynamic> json) {
+    const defaults = LayoutConfiguration();
+
+    final rawOverrides = json['barcodePageOverrides'];
+    final overrides = <int, LayoutBox>{};
+
+    if (rawOverrides is Map) {
+      for (final entry in rawOverrides.entries) {
+        final page = int.tryParse(entry.key.toString());
+        final value = entry.value;
+
+        if (page != null && page > 0 && value is Map) {
+          overrides[page] = LayoutBox.fromJson(
+            Map<String, dynamic>.from(value),
+          );
+        }
+      }
+    }
+
+    return LayoutConfiguration(
+      detailsBox: json['detailsBox'] is Map
+          ? LayoutBox.fromJson(
+              Map<String, dynamic>.from(json['detailsBox'] as Map),
+            )
+          : defaults.detailsBox,
+      barcodeBox: json['barcodeBox'] is Map
+          ? LayoutBox.fromJson(
+              Map<String, dynamic>.from(json['barcodeBox'] as Map),
+            )
+          : defaults.barcodeBox,
+      selectedBox: LayoutBoxType.values.firstWhere(
+        (value) => value.name == json['selectedBox'],
+        orElse: () => defaults.selectedBox,
+      ),
+      movementStep:
+          (json['movementStep'] as num?)?.toDouble() ?? defaults.movementStep,
+      detailsFontSize:
+          (json['detailsFontSize'] as num?)?.toDouble() ??
+          defaults.detailsFontSize,
+      fieldSpacing:
+          (json['fieldSpacing'] as num?)?.toDouble() ?? defaults.fieldSpacing,
+      showBarcodeNumber:
+          json['showBarcodeNumber'] as bool? ?? defaults.showBarcodeNumber,
+      textStyle: LayoutTextStyle.values.firstWhere(
+        (value) => value.name == json['textStyle'],
+        orElse: () => defaults.textStyle,
+      ),
+      applyDetailsToAll:
+          json['applyDetailsToAll'] as bool? ?? defaults.applyDetailsToAll,
+      applyBarcodeToAll:
+          json['applyBarcodeToAll'] as bool? ?? defaults.applyBarcodeToAll,
+      barcodePageOverrides: overrides,
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/layout_designer/providers/layout_configuration_provider.dart
+==================================================
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/layout_configuration.dart';
+
+final layoutConfigurationProvider =
+    NotifierProvider<LayoutConfigurationNotifier, LayoutConfiguration>(
+      LayoutConfigurationNotifier.new,
+    );
+
+class LayoutConfigurationNotifier extends Notifier<LayoutConfiguration> {
+  int _selectedPage = 1;
+
+  int get selectedPage => _selectedPage;
+
+  @override
+  LayoutConfiguration build() {
+    return const LayoutConfiguration();
+  }
+
+  void selectPage(int pageNumber) {
+    if (pageNumber < 1) return;
+    _selectedPage = pageNumber;
+  }
+
+  void reset() {
+    _selectedPage = 1;
+    state = const LayoutConfiguration();
+  }
+
+  void selectBox(LayoutBoxType type) {
+    state = state.copyWith(selectedBox: type);
+  }
+
+  LayoutBox getBoxForPage(LayoutBoxType type, int pageNumber) {
+    if (type == LayoutBoxType.details) {
+      return state.detailsBox;
+    }
+
+    return state.barcodeBoxForPage(pageNumber);
+  }
+
+  void moveBox(
+    LayoutBoxType type, {
+    double dx = 0,
+    double dy = 0,
+    int? pageNumber,
+  }) {
+    final page = pageNumber ?? _selectedPage;
+    final currentBox = getBoxForPage(type, page);
+
+    final maxX = LayoutConfiguration.pageWidth - currentBox.width;
+    final maxY = LayoutConfiguration.pageHeight - currentBox.height;
+
+    final newX = (currentBox.x + dx).clamp(0.0, maxX).toDouble();
+    final newY = (currentBox.y + dy).clamp(0.0, maxY).toDouble();
+
+    final updatedBox = currentBox.copyWith(x: newX, y: newY);
+
+    if (type == LayoutBoxType.details) {
+      state = state.copyWith(detailsBox: updatedBox);
+      return;
+    }
+
+    final overrides = Map<int, LayoutBox>.from(state.barcodePageOverrides);
+
+    // Moving the barcode on a page creates an individual override.
+    overrides[page] = updatedBox;
+
+    state = state.copyWith(barcodePageOverrides: overrides);
+  }
+
+  void resizeBox(
+    LayoutBoxType type, {
+    double widthDelta = 0,
+    double heightDelta = 0,
+    int? pageNumber,
+  }) {
+    final page = pageNumber ?? _selectedPage;
+    final currentBox = getBoxForPage(type, page);
+
+    final maxWidth = LayoutConfiguration.pageWidth - currentBox.x;
+    final maxHeight = LayoutConfiguration.pageHeight - currentBox.y;
+
+    final newWidth = (currentBox.width + widthDelta)
+        .clamp(1.0, maxWidth)
+        .toDouble();
+
+    final newHeight = (currentBox.height + heightDelta)
+        .clamp(1.0, maxHeight)
+        .toDouble();
+
+    final updatedBox = currentBox.copyWith(width: newWidth, height: newHeight);
+
+    if (type == LayoutBoxType.details) {
+      state = state.copyWith(detailsBox: updatedBox);
+      return;
+    }
+
+    final overrides = Map<int, LayoutBox>.from(state.barcodePageOverrides);
+
+    overrides[page] = updatedBox;
+
+    state = state.copyWith(barcodePageOverrides: overrides);
+  }
+
+  void updateSelectedBoxDimensions({double? width, double? height}) {
+    final type = state.selectedBox;
+    final currentBox = getBoxForPage(type, _selectedPage);
+
+    final newWidth = (width ?? currentBox.width)
+        .clamp(1.0, LayoutConfiguration.pageWidth - currentBox.x)
+        .toDouble();
+
+    final newHeight = (height ?? currentBox.height)
+        .clamp(1.0, LayoutConfiguration.pageHeight - currentBox.y)
+        .toDouble();
+
+    final updatedBox = currentBox.copyWith(width: newWidth, height: newHeight);
+
+    if (type == LayoutBoxType.details) {
+      state = state.copyWith(detailsBox: updatedBox);
+      return;
+    }
+
+    final overrides = Map<int, LayoutBox>.from(state.barcodePageOverrides);
+
+    overrides[_selectedPage] = updatedBox;
+
+    state = state.copyWith(barcodePageOverrides: overrides);
+  }
+
+  void resetBarcodePositionForPage(int pageNumber) {
+    final overrides = Map<int, LayoutBox>.from(state.barcodePageOverrides);
+
+    overrides.remove(pageNumber);
+
+    state = state.copyWith(barcodePageOverrides: overrides);
+  }
+
+  void applyBarcodePositionToAllPages() {
+    state = state.copyWith(barcodePageOverrides: const {});
+  }
+
+  void updateMovementStep(double value) {
+    state = state.copyWith(movementStep: value.clamp(1.0, 20.0).toDouble());
+  }
+
+  void updateDetailsFontSize(double value) {
+    state = state.copyWith(detailsFontSize: value);
+  }
+
+  void updateFieldSpacing(double value) {
+    state = state.copyWith(fieldSpacing: value);
+  }
+
+  void updateShowBarcodeNumber(bool value) {
+    state = state.copyWith(showBarcodeNumber: value);
+  }
+
+  void updateTextStyle(LayoutTextStyle value) {
+    state = state.copyWith(textStyle: value);
+  }
+
+  void updateApplyDetailsToAll(bool value) {
+    state = state.copyWith(applyDetailsToAll: value);
+  }
+
+  void updateApplyBarcodeToAll(bool value) {
+    state = state.copyWith(applyBarcodeToAll: value);
+  }
+}
+
+
+==================================================
+FILE: lib/features/layout_designer/providers/layout_warnings_provider.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../excel_import/providers/excel_provider.dart';
+import '../models/layout_configuration.dart';
+import 'layout_configuration_provider.dart';
+
+class LayoutWarning {
+  final int pageNumber;
+  final String message;
+
+  const LayoutWarning({required this.pageNumber, required this.message});
+}
+
+final layoutWarningsProvider = Provider<List<LayoutWarning>>((ref) {
+  final configuration = ref.watch(layoutConfigurationProvider);
+  final excelData = ref.watch(excelProvider).importedData;
+
+  if (excelData == null || excelData.rows.isEmpty) {
+    return const [];
+  }
+
+  final warnings = <LayoutWarning>[];
+
+  final detailsBox = configuration.detailsBox;
+  final fontSize = configuration.detailsFontSize;
+  final fontWeight = configuration.textStyle == LayoutTextStyle.bold
+      ? FontWeight.bold
+      : FontWeight.normal;
+
+  const padding = 12.0;
+
+  final availableWidth = detailsBox.width - padding;
+  final availableHeight = detailsBox.height - padding;
+
+  final selectedColumns = excelData.includedColumns.toList()..sort();
+
+  if (selectedColumns.isEmpty) {
+    return const [
+      LayoutWarning(
+        pageNumber: 1,
+        message: 'No fields selected for the Details Box.',
+      ),
+    ];
+  }
+
+  for (var rowIndex = 0; rowIndex < excelData.rows.length; rowIndex++) {
+    final pageNumber = rowIndex + 1;
+    final candidate = excelData.rows[rowIndex];
+
+    final barcodeBox = configuration.barcodeBoxForPage(pageNumber);
+
+    // Check physical intersection between the two boxes.
+    final boxesOverlap =
+        detailsBox.x < barcodeBox.x + barcodeBox.width &&
+        detailsBox.x + detailsBox.width > barcodeBox.x &&
+        detailsBox.y < barcodeBox.y + barcodeBox.height &&
+        detailsBox.y + detailsBox.height > barcodeBox.y;
+
+    if (boxesOverlap) {
+      warnings.add(
+        LayoutWarning(
+          pageNumber: pageNumber,
+          message: 'Details Box and Barcode Box overlap.',
+        ),
+      );
+    }
+
+    var requiredHeight = 0.0;
+
+    for (final columnIndex in selectedColumns) {
+      if (columnIndex >= excelData.headers.length ||
+          columnIndex >= candidate.length) {
+        continue;
+      }
+
+      final label = excelData.headers[columnIndex];
+      final value = candidate[columnIndex];
+
+      // Measure the label and value separately so the value can
+      // wrap without being measured as one unbreakable line.
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: '$label : ',
+          style: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final valueWidth = availableWidth - labelPainter.width;
+
+      if (valueWidth <= 0) {
+        warnings.add(
+          LayoutWarning(
+            pageNumber: pageNumber,
+            message: 'Field "$label" leaves no space for its value.',
+          ),
+        );
+        continue;
+      }
+
+      final valuePainter = TextPainter(
+        text: TextSpan(
+          text: value,
+          style: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: valueWidth);
+
+      final lineHeight = valuePainter.height > labelPainter.height
+          ? valuePainter.height
+          : labelPainter.height;
+
+      requiredHeight += lineHeight + configuration.fieldSpacing;
+    }
+
+    if (requiredHeight > availableHeight) {
+      warnings.add(
+        LayoutWarning(
+          pageNumber: pageNumber,
+          message:
+              'Candidate details require '
+              '${requiredHeight.toStringAsFixed(1)} pt, '
+              'but only ${availableHeight.toStringAsFixed(1)} pt is available.',
+        ),
+      );
+    }
+
+    if (warnings.length >= 500) {
+      warnings.add(
+        const LayoutWarning(
+          pageNumber: 1,
+          message: 'Additional warnings were omitted.',
+        ),
+      );
+      break;
+    }
+  }
+
+  return warnings;
+});
+
+
+==================================================
+FILE: lib/features/layout_designer/screens/layout_designer_screen.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../barcode/providers/barcode_configuration_provider.dart';
+import '../../excel_import/providers/excel_provider.dart';
+import '../models/layout_configuration.dart';
+import '../providers/layout_configuration_provider.dart';
+import '../providers/layout_warnings_provider.dart';
+import '../widgets/a4_page_preview.dart';
+import '../widgets/layout_controls.dart';
+
+class LayoutDesignerScreen extends ConsumerStatefulWidget {
+  final VoidCallback onBack;
+  final VoidCallback onNext;
+
+  const LayoutDesignerScreen({
+    super.key,
+    required this.onBack,
+    required this.onNext,
+  });
+
+  @override
+  ConsumerState<LayoutDesignerScreen> createState() =>
+      _LayoutDesignerScreenState();
+}
+
+class _LayoutDesignerScreenState extends ConsumerState<LayoutDesignerScreen> {
+  bool _zoomFirstHalf = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final configuration = ref.watch(layoutConfigurationProvider);
+    final notifier = ref.read(layoutConfigurationProvider.notifier);
+
+    final excelData = ref.watch(excelProvider).importedData;
+    final barcodeConfig = ref.watch(barcodeConfigurationProvider);
+
+    final layoutWarnings = ref.watch(layoutWarningsProvider);
+
+    // Convert LayoutWarning objects into strings because
+    // LayoutControls currently accepts List<String>.
+    final warnings = layoutWarnings.map((warning) {
+      return 'Page ${warning.pageNumber}: ${warning.message}';
+    }).toList();
+
+    // Build preview details using the first candidate.
+    final candidateDetails = <MapEntry<String, String>>[];
+
+    if (excelData != null && excelData.rows.isNotEmpty) {
+      final firstCandidate = excelData.rows.first;
+
+      for (final index in excelData.includedColumns) {
+        if (index >= excelData.headers.length ||
+            index >= firstCandidate.length) {
+          continue;
+        }
+
+        candidateDetails.add(
+          MapEntry(excelData.headers[index], firstCandidate[index]),
+        );
+      }
+    }
+
+    final barcodeValue = barcodeConfig.startingNumber.isEmpty
+        ? '50001'
+        : barcodeConfig.startingNumber;
+
+    final pageValid =
+        _isBoxInsidePage(configuration.detailsBox) &&
+        _isBoxInsidePage(configuration.barcodeBox);
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context),
+
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 6,
+                      child: Center(
+                        child: A4PagePreview(
+                          configuration: configuration,
+                          candidateDetails: candidateDetails,
+                          barcodeValue: barcodeValue,
+                          zoomFirstHalf: _zoomFirstHalf,
+                          onSelectBox: notifier.selectBox,
+                          onMoveBox: (type, dx, dy) {
+                            notifier.moveBox(type, dx: dx, dy: dy);
+                          },
+                          onResizeBox: (type, widthDelta, heightDelta) {
+                            notifier.resizeBox(
+                              type,
+                              widthDelta: widthDelta,
+                              heightDelta: heightDelta,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 24),
+
+                    Expanded(
+                      flex: 4,
+                      child: SingleChildScrollView(
+                        child: LayoutControls(
+                          configuration: configuration,
+                          notifier: notifier,
+                          warnings: warnings,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            _buildFooter(context, pageValid),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isBoxInsidePage(LayoutBox box) {
+    return box.x >= 0 &&
+        box.y >= 0 &&
+        box.width > 0 &&
+        box.height > 0 &&
+        box.x + box.width <= LayoutConfiguration.pageWidth &&
+        box.y + box.height <= LayoutConfiguration.pageHeight;
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'PDF Layout Designer',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Position the Details Box and Barcode Box on the A4 page',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+
+          Tooltip(
+            message: 'Zoom into the top half of the A4 page',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Checkbox(
+                  value: _zoomFirstHalf,
+                  onChanged: (value) {
+                    setState(() {
+                      _zoomFirstHalf = value ?? false;
+                    });
+                  },
+                ),
+                const Text('Zoom first half'),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          OutlinedButton.icon(
+            onPressed: widget.onBack,
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('Back'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter(BuildContext context, bool pageValid) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'A4 · Portrait · Measurements in PDF points',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+
+          FilledButton.icon(
+            onPressed: pageValid ? widget.onNext : null,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Preview PDF'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/layout_designer/widgets/a4_page_preview.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../models/layout_configuration.dart';
+
+typedef BoxMoveCallback = void Function(
+  LayoutBoxType type,
+  double dx,
+  double dy,
+);
+
+typedef BoxResizeCallback = void Function(
+  LayoutBoxType type,
+  double widthDelta,
+  double heightDelta,
+);
+
+class A4PagePreview extends StatelessWidget {
+  final LayoutConfiguration configuration;
+  final List<MapEntry<String, String>> candidateDetails;
+  final String barcodeValue;
+
+  final ValueChanged<LayoutBoxType> onSelectBox;
+  final BoxMoveCallback onMoveBox;
+  final BoxResizeCallback onResizeBox;
+
+  final bool zoomFirstHalf;
+
+  const A4PagePreview({
+    super.key,
+    required this.configuration,
+    required this.candidateDetails,
+    required this.barcodeValue,
+    required this.onSelectBox,
+    required this.onMoveBox,
+    required this.onResizeBox,
+    this.zoomFirstHalf = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // In zoom mode, fit the top half of the A4 page
+        // into the available preview area.
+        final visiblePageHeightPoints = zoomFirstHalf
+            ? LayoutConfiguration.pageHeight / 2
+            : LayoutConfiguration.pageHeight;
+
+        final widthScale = constraints.maxWidth / LayoutConfiguration.pageWidth;
+
+        final heightScale = constraints.maxHeight / visiblePageHeightPoints;
+
+        final scale = widthScale < heightScale ? widthScale : heightScale;
+
+        final pageWidth = LayoutConfiguration.pageWidth * scale;
+        final fullPageHeight = LayoutConfiguration.pageHeight * scale;
+
+        final visiblePageHeight = visiblePageHeightPoints * scale;
+
+        return Center(
+          child: Focus(
+            autofocus: true,
+            onKeyEvent: _handleKeyEvent,
+            child: Builder(
+              builder: (focusContext) {
+                return ClipRect(
+                  child: SizedBox(
+                    width: pageWidth,
+                    height: visiblePageHeight,
+                    child: OverflowBox(
+                      alignment: Alignment.topCenter,
+                      minWidth: pageWidth,
+                      maxWidth: pageWidth,
+                      minHeight: fullPageHeight,
+                      maxHeight: fullPageHeight,
+                      child: Container(
+                        width: pageWidth,
+                        height: fullPageHeight,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: Colors.grey.shade400),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.10),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              left: 8 * scale,
+                              top: 8 * scale,
+                              child: Text(
+                                zoomFirstHalf
+                                    ? 'A4 PREVIEW · TOP HALF'
+                                    : 'A4 PREVIEW',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 9 * scale,
+                                ),
+                              ),
+                            ),
+
+                            _buildPositionedBox(
+                              context: focusContext,
+                              box: configuration.detailsBox,
+                              type: LayoutBoxType.details,
+                              scale: scale,
+                              selected:
+                                  configuration.selectedBox ==
+                                  LayoutBoxType.details,
+                              child: _buildDetailsContent(scale),
+                            ),
+
+                            _buildPositionedBox(
+                              context: focusContext,
+                              box: configuration.barcodeBoxForPage(
+                                    configuration.selectedPageNumber,
+                                    ),
+                              type: LayoutBoxType.barcode,
+                              scale: scale,
+                              selected:
+                                  configuration.selectedBox ==
+                                  LayoutBoxType.barcode,
+                              child: _buildBarcodeContent(scale),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+    final isControlPressed = HardwareKeyboard.instance.isControlPressed;
+
+    final selectedType = configuration.selectedBox;
+    final step = configuration.movementStep;
+
+    if (key != LogicalKeyboardKey.arrowUp &&
+        key != LogicalKeyboardKey.arrowDown &&
+        key != LogicalKeyboardKey.arrowLeft &&
+        key != LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.ignored;
+    }
+
+    if (isControlPressed) {
+      switch (key) {
+        case LogicalKeyboardKey.arrowUp:
+          onResizeBox(selectedType, 0, -step);
+          break;
+        case LogicalKeyboardKey.arrowDown:
+          onResizeBox(selectedType, 0, step);
+          break;
+        case LogicalKeyboardKey.arrowLeft:
+          onResizeBox(selectedType, -step, 0);
+          break;
+        case LogicalKeyboardKey.arrowRight:
+          onResizeBox(selectedType, step, 0);
+          break;
+      }
+    } else {
+      switch (key) {
+        case LogicalKeyboardKey.arrowUp:
+          onMoveBox(selectedType, 0, -step);
+          break;
+        case LogicalKeyboardKey.arrowDown:
+          onMoveBox(selectedType, 0, step);
+          break;
+        case LogicalKeyboardKey.arrowLeft:
+          onMoveBox(selectedType, -step, 0);
+          break;
+        case LogicalKeyboardKey.arrowRight:
+          onMoveBox(selectedType, step, 0);
+          break;
+      }
+    }
+
+    return KeyEventResult.handled;
+  }
+
+  Widget _buildPositionedBox({
+    required BuildContext context,
+    required LayoutBox box,
+    required LayoutBoxType type,
+    required double scale,
+    required bool selected,
+    required Widget child,
+  }) {
+    return Positioned(
+      left: box.x * scale,
+      top: box.y * scale,
+      width: box.width * scale,
+      height: box.height * scale,
+      child: GestureDetector(
+        onTap: () {
+          Focus.of(context).requestFocus();
+          onSelectBox(type);
+        },
+        onPanStart: (_) {
+          Focus.of(context).requestFocus();
+          onSelectBox(type);
+        },
+        onPanUpdate: (details) {
+          onMoveBox(type, details.delta.dx / scale, details.delta.dy / scale);
+        },
+        child: Container(
+          padding: EdgeInsets.all(6 * scale),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(
+              color: selected ? Colors.blue : Colors.grey.shade500,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: ClipRect(child: child),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailsContent(double scale) {
+    final isBold = configuration.textStyle == LayoutTextStyle.bold;
+
+    if (candidateDetails.isEmpty) {
+      return const Text(
+        'No candidate data available',
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(color: Colors.grey),
+      );
+    }
+
+    final fontSize = configuration.detailsFontSize * scale;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final field in candidateDetails)
+          SizedBox(
+            width: double.infinity,
+            child: Text(
+              '${field.key} : ${field.value}',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                color: Colors.black,
+                height: 1.35,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBarcodeContent(double scale) {
+    const bars = <int>[
+      2,
+      1,
+      3,
+      1,
+      1,
+      2,
+      2,
+      1,
+      3,
+      1,
+      2,
+      2,
+      1,
+      3,
+      1,
+      2,
+      1,
+      1,
+      3,
+      2,
+      2,
+      1,
+      1,
+      3,
+      2,
+      1,
+      2,
+      3,
+      1,
+      1,
+      2,
+      2,
+    ];
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < bars.length; i++)
+                Expanded(
+                  flex: bars[i],
+                  child: Container(
+                    color: i.isEven ? Colors.black : Colors.white,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (configuration.showBarcodeNumber)
+          Padding(
+            padding: EdgeInsets.only(top: 4 * scale),
+            child: Text(
+              barcodeValue,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 10 * scale,
+                fontWeight: configuration.textStyle == LayoutTextStyle.bold
+                    ? FontWeight.bold
+                    : FontWeight.normal,
+                color: Colors.black,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/layout_designer/widgets/layout_controls.dart
+==================================================
+import 'package:flutter/material.dart';
+
+import '../models/layout_configuration.dart';
+import '../providers/layout_configuration_provider.dart';
+
+class LayoutControls extends StatelessWidget {
+  final LayoutConfiguration configuration;
+  final LayoutConfigurationNotifier notifier;
+  final List<String> warnings;
+
+  const LayoutControls({
+    super.key,
+    required this.configuration,
+    required this.notifier,
+    required this.warnings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedBox = configuration.selectedBox == LayoutBoxType.details
+        ? configuration.detailsBox
+        : configuration.barcodeBox;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('SELECT BOX'),
+        const SizedBox(height: 10),
+
+        SegmentedButton<LayoutBoxType>(
+          segments: const [
+            ButtonSegment(
+              value: LayoutBoxType.details,
+              label: Text('Details Box'),
+            ),
+            ButtonSegment(
+              value: LayoutBoxType.barcode,
+              label: Text('Barcode Box'),
+            ),
+          ],
+          selected: {configuration.selectedBox},
+          onSelectionChanged: (selection) {
+            notifier.selectBox(selection.first);
+          },
+        ),
+
+        const SizedBox(height: 22),
+
+        _sectionTitle('MOVE & RESIZE'),
+        const SizedBox(height: 10),
+
+        Row(
+          children: [
+            const Text('Movement step'),
+            const Spacer(),
+            Text('${configuration.movementStep.toStringAsFixed(0)} pt'),
+          ],
+        ),
+
+        Slider(
+          value: configuration.movementStep.clamp(1.0, 20.0),
+          min: 1,
+          max: 20,
+          divisions: 19,
+          onChanged: notifier.updateMovementStep,
+        ),
+
+        const SizedBox(height: 8),
+
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'KEYBOARD SHORTCUTS',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              _ShortcutRow(
+                shortcut: '↑ ↓ ← →',
+                description: 'Move selected box',
+              ),
+              SizedBox(height: 8),
+              _ShortcutRow(
+                shortcut: 'Ctrl + ↑',
+                description: 'Decrease height',
+              ),
+              SizedBox(height: 8),
+              _ShortcutRow(
+                shortcut: 'Ctrl + ↓',
+                description: 'Increase height',
+              ),
+              SizedBox(height: 8),
+              _ShortcutRow(shortcut: 'Ctrl + ←', description: 'Decrease width'),
+              SizedBox(height: 8),
+              _ShortcutRow(shortcut: 'Ctrl + →', description: 'Increase width'),
+              SizedBox(height: 10),
+              Text(
+                'Click a box in the A4 preview first to select it. '
+                'You can also drag a box to move it.',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        _sectionTitle('BOX DIMENSIONS'),
+        const SizedBox(height: 10),
+
+        _dimensionSlider(
+          label: 'Width',
+          value: selectedBox.width,
+          min: 40,
+          max: 550,
+          onChanged: (value) {
+            notifier.updateSelectedBoxDimensions(width: value);
+          },
+        ),
+
+        _dimensionSlider(
+          label: 'Height',
+          value: selectedBox.height,
+          min: 30,
+          max: 400,
+          onChanged: (value) {
+            notifier.updateSelectedBoxDimensions(height: value);
+          },
+        ),
+
+        if (configuration.selectedBox == LayoutBoxType.details) ...[
+          const SizedBox(height: 12),
+          _sectionTitle('DETAILS FONT SIZE'),
+          _dimensionSlider(
+            label: 'Font size',
+            value: configuration.detailsFontSize,
+            min: 6,
+            max: 24,
+            suffix: 'pt',
+            onChanged: notifier.updateDetailsFontSize,
+          ),
+        ],
+
+        const SizedBox(height: 22),
+
+        _sectionTitle('BARCODE NUMBER'),
+        const SizedBox(height: 8),
+
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: true, label: Text('Show number')),
+            ButtonSegment(value: false, label: Text('Hide number')),
+          ],
+          selected: {configuration.showBarcodeNumber},
+          onSelectionChanged: (selection) {
+            notifier.updateShowBarcodeNumber(selection.first);
+          },
+        ),
+
+        const SizedBox(height: 22),
+
+        _sectionTitle('TEXT STYLE'),
+        const SizedBox(height: 8),
+
+        SegmentedButton<LayoutTextStyle>(
+          segments: const [
+            ButtonSegment(
+              value: LayoutTextStyle.normal,
+              label: Text('Normal Text'),
+            ),
+            ButtonSegment(
+              value: LayoutTextStyle.bold,
+              label: Text('Bold Text'),
+            ),
+          ],
+          selected: {configuration.textStyle},
+          onSelectionChanged: (selection) {
+            notifier.updateTextStyle(selection.first);
+          },
+        ),
+
+        const SizedBox(height: 22),
+
+        _sectionTitle('APPLY TO ALL PAGES'),
+
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          value: configuration.applyDetailsToAll,
+          title: const Text('Apply Details to all'),
+          onChanged: (value) {
+            notifier.updateApplyDetailsToAll(value ?? false);
+          },
+        ),
+
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          value: configuration.applyBarcodeToAll,
+          title: const Text('Apply Barcode to all'),
+          onChanged: (value) {
+            notifier.updateApplyBarcodeToAll(value ?? false);
+          },
+        ),
+
+        if (warnings.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _sectionTitle('LAYOUT WARNINGS'),
+          const SizedBox(height: 8),
+
+          for (final warning in warnings.take(10))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(warning, style: const TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _dimensionSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+    String suffix = 'pt',
+  }) {
+    final safeValue = value.clamp(min, max);
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Text(label),
+            const Spacer(),
+            Text('${value.toStringAsFixed(0)} $suffix'),
+          ],
+        ),
+        Slider(value: safeValue, min: min, max: max, onChanged: onChanged),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+}
+
+class _ShortcutRow extends StatelessWidget {
+  final String shortcut;
+  final String description;
+
+  const _ShortcutRow({required this.shortcut, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 105,
+          child: Text(
+            shortcut,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+        ),
+        Expanded(
+          child: Text(description, style: const TextStyle(fontSize: 11)),
+        ),
+      ],
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/features/pdf_generation/providers/pdf_provider.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/pdf_generation/screens/pdf_preview_screen.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/features/pdf_generation/services/pdf_generation_service.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/main.dart
+==================================================
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'app.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  runApp(const ProviderScope(child: OMRPdfGeneratorApp()));
+}
+
+
+==================================================
+FILE: lib/shared/models/app_error.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/shared/providers/app_settings_provider.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/shared/widgets/app_button.dart
+==================================================
+
+
+
+==================================================
+FILE: lib/shared/widgets/app_sidebar.dart
+==================================================
+import 'package:flutter/material.dart';
+
+class AppSidebar extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  const AppSidebar({
+    super.key,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  static const List<({String title, IconData icon})> destinations = [
+    (title: 'Dashboard', icon: Icons.dashboard_outlined),
+    (title: 'New Job', icon: Icons.add_box_outlined),
+    (title: 'Excel Data', icon: Icons.table_chart_outlined),
+    (title: 'Barcode', icon: Icons.qr_code_2_outlined),
+    (title: 'Layout', icon: Icons.dashboard_customize_outlined),
+    (title: 'PDF Preview', icon: Icons.picture_as_pdf_outlined),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 210,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF4938CC), Color(0xFF8734D8), Color(0xFFD32383)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 28, 16, 35),
+            child: Text(
+              'OMR PDF\nGenerator',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
+                height: 1.3,
+              ),
+            ),
+          ),
+
+          Expanded(
+            child: ListView.builder(
+              itemCount: destinations.length,
+              itemBuilder: (context, index) {
+                final destination = destinations[index];
+                final selected = selectedIndex == index;
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  child: Material(
+                    color: selected
+                        ? Colors.white.withValues(alpha: 0.22)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    child: ListTile(
+                      selected: selected,
+                      leading: Icon(
+                        destination.icon,
+                        color: Colors.white,
+                        size: 21,
+                      ),
+                      title: Text(
+                        destination.title,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      onTap: () => onDestinationSelected(index),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const Padding(
+            padding: EdgeInsets.all(18),
+            child: Text(
+              'Offline · Desktop Application',
+              style: TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+==================================================
+FILE: lib/shared/widgets/loading_widget.dart
+==================================================
+
+
+
+==================================================
+FILE: test/widget_test.dart
+==================================================
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:omr_pdf_generator/app.dart';
+
+void main() {
+  testWidgets('Application starts successfully', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: OMRPdfGeneratorApp()));
+
+    expect(find.text('Dashboard'), findsWidgets);
+    expect(find.text('New Job'), findsWidgets);
+  });
+}
+

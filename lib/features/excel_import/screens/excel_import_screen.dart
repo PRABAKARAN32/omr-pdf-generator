@@ -19,6 +19,9 @@ class ExcelImportScreen extends ConsumerStatefulWidget {
 }
 
 class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
+  /// Only this many rows are shown in the preview table.
+  static const int _previewRowLimit = 50;
+
   bool isPickingFile = false;
 
   Future<void> _pickExcelFile() async {
@@ -31,7 +34,7 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
     try {
       final file = await FilePicker.pickFile(
         type: FileType.custom,
-        allowedExtensions: ['xlsx'],
+        allowedExtensions: ['xlsx', 'csv'],
       );
 
       if (!mounted || file == null) return;
@@ -40,9 +43,12 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
 
       if (!mounted) return;
 
-      ref
+      // Runs in a background isolate, the UI stays responsive.
+      await ref
           .read(excelProvider.notifier)
           .selectWorkbook(fileName: file.name, bytes: bytes);
+
+      if (!mounted) return;
 
       final state = ref.read(excelProvider);
 
@@ -65,8 +71,9 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
   void _showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildFieldSelection() {
@@ -129,7 +136,7 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
 
     if (data == null) {
       return const Center(
-        child: Text('Select an Excel file to preview its data.'),
+        child: Text('Select an Excel or CSV file to preview its data.'),
       );
     }
 
@@ -145,22 +152,39 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
       return const Center(child: Text('No candidate records found.'));
     }
 
-    return SingleChildScrollView(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: includedColumns.map((index) {
-            return DataColumn(label: Text(data.headers[index]));
-          }).toList(),
-          rows: data.rows.map((row) {
-            return DataRow(
-              cells: includedColumns.map((index) {
-                return DataCell(Text(index < row.length ? row[index] : ''));
-              }).toList(),
-            );
-          }).toList(),
+    // DataTable is not lazy, so only the first rows are rendered.
+    final previewRows = data.rows.take(_previewRowLimit).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Showing first ${previewRows.length} of ${data.recordCount} records',
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
         ),
-      ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: SingleChildScrollView(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: includedColumns.map((index) {
+                  return DataColumn(label: Text(data.headers[index]));
+                }).toList(),
+                rows: previewRows.map((row) {
+                  return DataRow(
+                    cells: includedColumns.map((index) {
+                      return DataCell(
+                        Text(index < row.length ? row[index] : ''),
+                      );
+                    }).toList(),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -173,16 +197,23 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
 
     return ExpansionTile(
       title: Text(
-        '${data.warnings.length} validation warning(s)',
+        '${data.totalWarnings} row(s) with empty values',
         style: const TextStyle(color: Colors.orange),
       ),
-      children: data.warnings.map((warning) {
-        return ListTile(
-          dense: true,
-          leading: const Icon(Icons.warning_amber, color: Colors.orange),
-          title: Text(warning),
-        );
-      }).toList(),
+      children: [
+        SizedBox(
+          height: 200,
+          child: ListView(
+            children: data.warnings.map((warning) {
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.warning_amber, color: Colors.orange),
+                title: Text(warning),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
     );
   }
 
@@ -191,7 +222,8 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
     final state = ref.watch(excelProvider);
     final data = state.importedData;
 
-    final canContinue = data != null && data.includedColumns.isNotEmpty;
+    final canContinue =
+        !isPickingFile && data != null && data.includedColumns.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -220,7 +252,9 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
               ElevatedButton.icon(
                 onPressed: isPickingFile ? null : _pickExcelFile,
                 icon: const Icon(Icons.upload_file),
-                label: Text(isPickingFile ? 'Loading...' : 'Select Excel File'),
+                label: Text(
+                  isPickingFile ? 'Importing...' : 'Select Excel / CSV File',
+                ),
               ),
               const SizedBox(width: 15),
               Expanded(
@@ -231,6 +265,18 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
               ),
             ],
           ),
+
+          const SizedBox(height: 6),
+          const Text(
+            'Tip: for very large files (1 lakh+ rows) save the sheet as '
+            '"CSV UTF-8" in Excel. CSV imports much faster than .xlsx.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+
+          if (isPickingFile) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
 
           if (state.error != null) ...[
             const SizedBox(height: 12),
@@ -245,7 +291,7 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
               runSpacing: 8,
               children: [
                 Text('Records: ${data.recordCount}'),
-                Text('Excel Fields: ${data.columnCount}'),
+                Text('Fields: ${data.columnCount}'),
                 Text('Selected Fields: ${data.includedColumns.length}'),
               ],
             ),
@@ -265,7 +311,7 @@ class _ExcelImportScreenState extends ConsumerState<ExcelImportScreen> {
           ] else ...[
             const Expanded(
               child: Center(
-                child: Text('Upload an Excel file to get started.'),
+                child: Text('Upload an Excel or CSV file to get started.'),
               ),
             ),
           ],

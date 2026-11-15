@@ -51,52 +51,37 @@ class ExcelImportNotifier extends Notifier<ExcelImportState> {
     return const ExcelImportState();
   }
 
-  void selectWorkbook({required String fileName, required Uint8List bytes}) {
+  /// Imports an .xlsx or .csv file in a background isolate.
+  Future<void> selectWorkbook({
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
     try {
-      debugPrint('EXCEL: Starting workbook decoding');
-      debugPrint('EXCEL: File = $fileName');
-      debugPrint('EXCEL: Size = ${bytes.length} bytes');
+      debugPrint('IMPORT: Starting $fileName (${bytes.length} bytes)');
 
-      final service = ref.read(excelServiceProvider);
-      final sheets = service.getWorksheetNames(bytes);
-
-      debugPrint('EXCEL: Worksheets detected = ${sheets.length}');
-      debugPrint('EXCEL: $sheets');
-
-      if (sheets.isEmpty) {
-        throw Exception('No worksheets found in this workbook.');
-      }
-
-      // Automatically import the first worksheet.
-      final firstSheet = sheets.first;
-
-      final data = service.importWorksheet(
+      final result = await importFileInBackground(
         bytes: bytes,
         fileName: fileName,
-        sheetName: firstSheet,
       );
 
-      debugPrint('EXCEL: Imported worksheet = $firstSheet');
-      debugPrint('EXCEL: Headers = ${data.headers.length}');
-      debugPrint('EXCEL: Records = ${data.recordCount}');
-      debugPrint('EXCEL: Warnings = ${data.warnings.length}');
+      debugPrint('IMPORT: Records = ${result.data.recordCount}');
+      debugPrint('IMPORT: Headers = ${result.data.headers.length}');
+      debugPrint('IMPORT: Warnings = ${result.data.totalWarnings}');
 
       state = ExcelImportState(
         fileName: fileName,
         fileBytes: bytes,
-        worksheetNames: sheets,
-        importedData: data,
+        worksheetNames: result.sheetNames,
+        importedData: result.data,
       );
-
-      debugPrint('EXCEL: Workbook loaded successfully');
     } catch (error, stackTrace) {
-      debugPrint('EXCEL ERROR: $error');
+      debugPrint('IMPORT ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
 
       state = ExcelImportState(
         fileName: fileName,
         fileBytes: bytes,
-        error: error.toString(),
+        error: error.toString().replaceFirst('Exception: ', ''),
       );
     }
   }

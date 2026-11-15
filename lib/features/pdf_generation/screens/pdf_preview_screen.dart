@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -5,14 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
-import '../../barcode/providers/barcode_configuration_provider.dart';
 import '../../barcode/models/barcode_configuration.dart';
+import '../../barcode/providers/barcode_configuration_provider.dart';
 import '../../client/providers/job_session_provider.dart';
 import '../../dashboard/providers/dashboard_provider.dart';
 import '../../excel_import/providers/excel_provider.dart';
 import '../../job_management/models/job_info.dart';
 import '../../layout_designer/providers/layout_configuration_provider.dart';
-import '../providers/pdf_provider.dart';
+import '../services/pdf_batch_service.dart';
 
 class PdfPreviewScreen extends ConsumerStatefulWidget {
   final VoidCallback onBack;
@@ -32,7 +33,11 @@ class PdfPreviewScreen extends ConsumerStatefulWidget {
 
 class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
   Future<Uint8List>? _pdfFuture;
+
   bool _isSaving = false;
+  bool _cancelRequested = false;
+  int _doneRecords = 0;
+  int _totalRecords = 0;
 
   @override
   void initState() {
@@ -56,7 +61,7 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.isActive) return;
 
-      final future = _generate();
+      final future = _generatePreview();
 
       setState(() {
         _pdfFuture = future;
@@ -64,119 +69,115 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
     });
   }
 
-  Future<Uint8List> _generate() {
-    return ref.read(pdfProvider.notifier).generatePdf();
+  /// Builds a small PDF with only the first few candidates.
+  Future<Uint8List> _generatePreview() {
+    return ref.read(pdfBatchServiceProvider).generatePreview(
+      data: ref.read(excelProvider).importedData,
+      barcode: ref.read(barcodeConfigurationProvider),
+      layout: ref.read(layoutConfigurationProvider),
+    );
   }
 
   void _retry() {
     if (_isSaving) return;
 
-    final future = _generate();
+    final future = _generatePreview();
 
     setState(() {
       _pdfFuture = future;
     });
   }
 
-  List<Map<String, String>> _buildCandidateData() {
-    final excelData = ref.read(excelProvider).importedData;
-    final barcodeConfig = ref.read(barcodeConfigurationProvider);
+  String _two(int value) => value.toString().padLeft(2, '0');
 
-    if (excelData == null) {
-      throw Exception('Candidate data is missing.');
-    }
-
-    final includedIndexes = excelData.includedColumns.toList()..sort();
-    final start = BigInt.tryParse(barcodeConfig.startingNumber);
-
-    if (start == null) {
-      throw Exception('Invalid starting barcode number.');
-    }
-
-    final originalWidth = barcodeConfig.startingNumber.length;
-    final result = <Map<String, String>>[];
-
-    for (var rowIndex = 0; rowIndex < excelData.rows.length; rowIndex++) {
-      final candidate = <String, String>{};
-
-      for (final columnIndex in includedIndexes) {
-        if (columnIndex < 0 || columnIndex >= excelData.headers.length) {
-          continue;
-        }
-
-        final header = excelData.headers[columnIndex];
-        final value = columnIndex < excelData.rows[rowIndex].length
-            ? excelData.rows[rowIndex][columnIndex]
-            : '';
-
-        candidate[header] = value;
-      }
-
-      final barcodeValue = (start + BigInt.from(rowIndex)).toString().padLeft(
-        originalWidth,
-        '0',
-      );
-
-      candidate['__barcodeValue'] = barcodeValue;
-      result.add(candidate);
-    }
-
-    return result;
+  String _safeName(String value) {
+    final cleaned = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
+    return cleaned.isEmpty ? 'Client' : cleaned;
   }
 
-  Future<void> _downloadPdf() async {
-    if (_isSaving || _pdfFuture == null) return;
+  void _showSnack(String message, {Color? color}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  Future<void> _generateAllPdfs() async {
+    if (_isSaving) return;
+
+    final folder = await FilePicker.getDirectoryPath(
+      dialogTitle: 'Choose a folder for the PDF files',
+    );
+
+    if (folder == null || !mounted) return;
+
+    final clientDetails = ref.read(jobSessionProvider);
+    final excelState = ref.read(excelProvider);
+    final excelData = excelState.importedData;
+    final fileBytes = excelState.fileBytes;
+    final barcodeConfig = ref.read(barcodeConfigurationProvider);
+    final layoutConfig = ref.read(layoutConfigurationProvider);
+
+    if (clientDetails == null || excelData == null || fileBytes == null) {
+      _showSnack('Job or candidate details are missing.', color: Colors.red);
+      return;
+    }
+
+    final batchService = ref.read(pdfBatchServiceProvider);
 
     setState(() {
       _isSaving = true;
+      _cancelRequested = false;
+      _doneRecords = 0;
+      _totalRecords = excelData.recordCount;
     });
 
     try {
-      final bytes = await _pdfFuture!;
+      final now = DateTime.now();
 
-      if (bytes.isEmpty) {
-        throw Exception('The generated PDF is empty.');
-      }
-
-      if (!mounted) return;
-
-      final savedFile = await FilePicker.saveFile(
-        dialogTitle: 'Save OMR Candidate PDF',
-        fileName: 'OMR_Candidates.pdf',
-        bytes: bytes,
-        mimeType: 'application/pdf',
+      final outDir = Directory(
+        '$folder${Platform.pathSeparator}'
+        'OMR_${_safeName(clientDetails.clientName)}_'
+        '${now.year}${_two(now.month)}${_two(now.day)}_'
+        '${_two(now.hour)}${_two(now.minute)}',
       );
 
-      if (!mounted || savedFile == null) return;
+      await batchService.generateToFolder(
+        outDir: outDir,
+        data: excelData,
+        barcode: barcodeConfig,
+        layout: layoutConfig,
+        isCancelled: () => _cancelRequested,
+        onProgress: (done, total) {
+          if (!mounted) return;
 
-      final clientDetails = ref.read(jobSessionProvider);
-      final excelData = ref.read(excelProvider).importedData;
-      final barcodeConfig = ref.read(barcodeConfigurationProvider);
-      final layoutConfig = ref.read(layoutConfigurationProvider);
-
-      if (clientDetails == null || excelData == null) {
-        throw Exception('Job or candidate details are missing.');
-      }
-
-      final downloadTime = DateTime.now();
-      const pdfFileName = 'OMR_Candidates.pdf';
+          setState(() {
+            _doneRecords = done;
+            _totalRecords = total;
+          });
+        },
+      );
 
       final job = JobInfo(
         id: clientDetails.jobId,
         clientName: clientDetails.clientName,
         orderDate: clientDetails.orderDate,
-        generatedAt: downloadTime,
+        generatedAt: DateTime.now(),
         recordCount: excelData.recordCount,
         barcodeFormat: barcodeConfig.format.label,
-        pdfFileName: pdfFileName,
+        pdfFileName: batchService.firstFileName(excelData.recordCount),
+        outputFolder: outDir.path,
       );
 
-      final storage = ref.read(jobStorageServiceProvider);
-
-      await storage.saveCompletedJob(
+      await ref.read(jobStorageServiceProvider).saveCompletedJob(
         job: job,
-        pdfBytes: bytes,
-        candidateData: _buildCandidateData(),
+        sourceFileName: excelState.fileName ?? 'candidates.xlsx',
+        sourceFileBytes: fileBytes,
         clientDetails: clientDetails.toJson(),
         barcodeConfiguration: barcodeConfig.toJson(),
         layoutConfiguration: layoutConfig.toJson(),
@@ -185,6 +186,8 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
       ref.invalidate(savedJobsProvider);
 
       if (!mounted) return;
+
+      final fileCount = batchService.fileCountFor(excelData.recordCount);
 
       final shouldGoToDashboard = await showDialog<bool>(
         context: context,
@@ -196,12 +199,13 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
               color: Colors.green,
               size: 52,
             ),
-            title: const Text('PDF Saved Successfully!'),
+            title: const Text('PDFs Saved Successfully!'),
             content: Text(
-              'Your PDF has been exported and the complete job '
-              'has been saved locally.\n\n'
+              'Your PDF files were saved to:\n${outDir.path}\n\n'
               'Client: ${clientDetails.clientName}\n'
-              'Candidates: ${excelData.recordCount}',
+              'Candidates: ${excelData.recordCount}\n'
+              'PDF files: $fileCount '
+              '(up to ${PdfBatchService.chunkSize} candidates each)',
               textAlign: TextAlign.center,
             ),
             actionsAlignment: MainAxisAlignment.center,
@@ -224,15 +228,11 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
         widget.onDownloadComplete();
       }
     } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('PDF saving failed: $error'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 6),
-        ),
-      );
+      if (error is PdfCancelledException) {
+        _showSnack('Generation cancelled. Files already written were kept.');
+      } else {
+        _showSnack('PDF generation failed: $error', color: Colors.red);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -249,7 +249,7 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
         children: [
           CircularProgressIndicator(),
           SizedBox(height: 16),
-          Text('Generating candidate PDF...'),
+          Text('Generating preview...'),
         ],
       ),
     );
@@ -288,11 +288,32 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
   Widget _buildPreview(Uint8List bytes) {
     return PdfPreview(
       build: (format) async => bytes,
-      allowPrinting: true,
-      allowSharing: true,
+      allowPrinting: false,
+      allowSharing: false,
       canChangePageFormat: false,
       canChangeOrientation: false,
-      pdfFileName: 'OMR_Candidates.pdf',
+      pdfFileName: 'OMR_Preview.pdf',
+    );
+  }
+
+  Widget _buildProgress() {
+    final value = _totalRecords == 0 ? null : _doneRecords / _totalRecords;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LinearProgressIndicator(value: value),
+          const SizedBox(height: 6),
+          Text(
+            _cancelRequested
+                ? 'Cancelling...'
+                : 'Generated $_doneRecords of $_totalRecords candidates',
+            style: const TextStyle(fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 
@@ -309,7 +330,7 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
             children: [
               IconButton(
                 tooltip: 'Back to layout designer',
-                onPressed: widget.onBack,
+                onPressed: _isSaving ? null : widget.onBack,
                 icon: const Icon(Icons.arrow_back),
               ),
               const SizedBox(width: 8),
@@ -322,11 +343,24 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
               OutlinedButton.icon(
                 onPressed: pdfReady && !_isSaving ? _retry : null,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Regenerate'),
+                label: const Text('Refresh preview'),
               ),
               const SizedBox(width: 10),
+              if (_isSaving) ...[
+                OutlinedButton(
+                  onPressed: _cancelRequested
+                      ? null
+                      : () {
+                          setState(() {
+                            _cancelRequested = true;
+                          });
+                        },
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 10),
+              ],
               FilledButton.icon(
-                onPressed: pdfReady && !_isSaving ? _downloadPdf : null,
+                onPressed: pdfReady && !_isSaving ? _generateAllPdfs : null,
                 icon: _isSaving
                     ? const SizedBox(
                         width: 16,
@@ -334,16 +368,19 @@ class _PdfPreviewScreenState extends ConsumerState<PdfPreviewScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.download),
-                label: Text(_isSaving ? 'Saving...' : 'Download PDF'),
+                label: Text(_isSaving ? 'Generating...' : 'Generate all PDFs'),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Review the generated A4 document. '
-            'Each candidate occupies one page.',
+          Text(
+            'The preview shows only the first ${PdfBatchService.previewCount} '
+            'candidates. "Generate all PDFs" saves every candidate '
+            '(one page each) into PDF files of '
+            '${PdfBatchService.chunkSize} candidates.',
           ),
           const SizedBox(height: 16),
+          if (_isSaving) _buildProgress(),
           Expanded(
             child: !widget.isActive
                 ? const Center(

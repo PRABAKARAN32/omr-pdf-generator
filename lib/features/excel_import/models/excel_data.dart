@@ -3,7 +3,13 @@ class ExcelImportData {
   final String sheetName;
   final List<String> headers;
   final List<List<String>> rows;
+
+  /// Only the first few warnings are stored (to save memory).
   final List<String> warnings;
+
+  /// Real number of rows that had empty values.
+  final int totalWarnings;
+
   final Set<int> includedColumns;
 
   const ExcelImportData({
@@ -13,6 +19,7 @@ class ExcelImportData {
     required this.rows,
     required this.warnings,
     required this.includedColumns,
+    this.totalWarnings = 0,
   });
 
   int get recordCount => rows.length;
@@ -25,6 +32,7 @@ class ExcelImportData {
     List<String>? headers,
     List<List<String>>? rows,
     List<String>? warnings,
+    int? totalWarnings,
     Set<int>? includedColumns,
   }) {
     return ExcelImportData(
@@ -33,6 +41,7 @@ class ExcelImportData {
       headers: headers ?? this.headers,
       rows: rows ?? this.rows,
       warnings: warnings ?? this.warnings,
+      totalWarnings: totalWarnings ?? this.totalWarnings,
       includedColumns: includedColumns ?? this.includedColumns,
     );
   }

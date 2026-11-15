@@ -34,6 +34,11 @@ class JobStorageService {
     }
   }
 
+  String _safeFileName(String name) {
+    final cleaned = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+    return cleaned.isEmpty ? 'candidates' : cleaned;
+  }
+
   Future<Directory> _getJobDirectory(String jobId) async {
     _validateJobId(jobId);
 
@@ -41,19 +46,20 @@ class JobStorageService {
     return Directory('${jobsDirectory.path}/$jobId');
   }
 
-  /// Saves the PDF and all data required to preserve the completed job.
+  /// Saves the job record in a lightweight way.
+  ///
+  /// The generated PDFs are already in the folder chosen by the user, so
+  /// only the original import file and the small configuration files are
+  /// stored. Candidate data is NOT duplicated as JSON, which keeps saving
+  /// fast and small even for 10 lakh records.
   Future<void> saveCompletedJob({
     required JobInfo job,
-    required Uint8List pdfBytes,
-    required List<Map<String, String>> candidateData,
+    required String sourceFileName,
+    required Uint8List sourceFileBytes,
     required Map<String, dynamic> clientDetails,
     required Map<String, dynamic> barcodeConfiguration,
     required Map<String, dynamic> layoutConfiguration,
   }) async {
-    if (pdfBytes.isEmpty) {
-      throw ArgumentError('Cannot save an empty PDF.');
-    }
-
     final jobDirectory = await _getJobDirectory(job.id);
 
     if (await jobDirectory.exists()) {
@@ -63,15 +69,11 @@ class JobStorageService {
     await jobDirectory.create(recursive: true);
 
     try {
-      await File('${jobDirectory.path}/${job.pdfFileName}')
-          .writeAsBytes(pdfBytes, flush: true);
+      await File(
+        '${jobDirectory.path}/source_${_safeFileName(sourceFileName)}',
+      ).writeAsBytes(sourceFileBytes, flush: true);
 
       await _writeJson('${jobDirectory.path}/job_info.json', job.toJson());
-
-      await _writeJson(
-        '${jobDirectory.path}/candidate_data.json',
-        candidateData,
-      );
 
       await _writeJson(
         '${jobDirectory.path}/client_details.json',
@@ -135,13 +137,23 @@ class JobStorageService {
     return jobs;
   }
 
+  /// Returns the first PDF file of the job (used for the dashboard preview).
   Future<Uint8List> getPdfBytes(JobInfo job) async {
-    final jobDirectory = await _getJobDirectory(job.id);
-    final pdfFile = File('${jobDirectory.path}/${job.pdfFileName}');
+    final folder = job.outputFolder;
+
+    File pdfFile;
+
+    if (folder != null) {
+      pdfFile = File('$folder${Platform.pathSeparator}${job.pdfFileName}');
+    } else {
+      // Jobs saved by older versions kept the PDF inside the job folder.
+      final jobDirectory = await _getJobDirectory(job.id);
+      pdfFile = File('${jobDirectory.path}/${job.pdfFileName}');
+    }
 
     if (!await pdfFile.exists()) {
       throw FileSystemException(
-        'The saved PDF could not be found.',
+        'The saved PDF could not be found. It may have been moved or deleted.',
         pdfFile.path,
       );
     }
@@ -166,6 +178,8 @@ class JobStorageService {
     throw const FormatException('Unexpected job data format.');
   }
 
+  /// Removes the job from the app history. PDF files exported to the folder
+  /// chosen by the user are not deleted.
   Future<void> deleteJob(String jobId) async {
     final jobDirectory = await _getJobDirectory(jobId);
 

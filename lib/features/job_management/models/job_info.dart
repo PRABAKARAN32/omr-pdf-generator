@@ -5,7 +5,12 @@ class JobInfo {
   final DateTime? generatedAt;
   final int recordCount;
   final String barcodeFormat;
+
+  /// Name of the first PDF file of the job (used for the dashboard preview).
   final String pdfFileName;
+
+  /// Folder where all generated PDF files were exported.
+  final String? outputFolder;
 
   const JobInfo({
     required this.id,
@@ -15,6 +20,7 @@ class JobInfo {
     required this.recordCount,
     required this.barcodeFormat,
     required this.pdfFileName,
+    this.outputFolder,
   });
 
   factory JobInfo.fromJson(Map<String, dynamic> json) {
@@ -28,6 +34,7 @@ class JobInfo {
       recordCount: (json['recordCount'] as num).toInt(),
       barcodeFormat: json['barcodeFormat'] as String,
       pdfFileName: json['pdfFileName'] as String,
+      outputFolder: json['outputFolder'] as String?,
     );
   }
 
@@ -40,6 +47,7 @@ class JobInfo {
       'recordCount': recordCount,
       'barcodeFormat': barcodeFormat,
       'pdfFileName': pdfFileName,
+      'outputFolder': outputFolder,
     };
   }
 }

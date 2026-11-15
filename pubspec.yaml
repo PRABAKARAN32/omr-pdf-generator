@@ -24,7 +24,6 @@ dependencies:
   uuid: ^4.6.0
   path: ^1.9.1
   archive: ^3.6.1
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -37,4 +36,11 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/fonts/
+    - assets/google_fonts/
+
+  fonts:
+    - family: Arimo
+      fonts:
+        - asset: assets/google_fonts/Arimo-Regular.ttf
+        - asset: assets/google_fonts/Arimo-Bold.ttf
+          weight: 700

@@ -22,7 +22,7 @@ class AppTheme {
         secondary: secondary,
         surface: surface,
       ),
-      fontFamily: 'Arial',
+      fontFamily: 'Arimo',
       appBarTheme: const AppBarTheme(
         backgroundColor: surface,
         foregroundColor: textPrimary,

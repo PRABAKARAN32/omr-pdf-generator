@@ -37,19 +37,17 @@ class _LayoutDesignerScreenState extends ConsumerState<LayoutDesignerScreen> {
 
     final layoutWarnings = ref.watch(layoutWarningsProvider);
 
-    // Convert LayoutWarning objects into strings because
-    // LayoutControls currently accepts List<String>.
-    final warnings = layoutWarnings.map((warning) {
-      return 'Page ${warning.pageNumber}: ${warning.message}';
-    }).toList();
+    // LayoutControls accepts List<String>.
+    final warnings = layoutWarnings.map((warning) => warning.label).toList();
 
     // Build preview details using the first candidate.
     final candidateDetails = <MapEntry<String, String>>[];
 
     if (excelData != null && excelData.rows.isNotEmpty) {
       final firstCandidate = excelData.rows.first;
+      final columns = excelData.includedColumns.toList()..sort();
 
-      for (final index in excelData.includedColumns) {
+      for (final index in columns) {
         if (index >= excelData.headers.length ||
             index >= firstCandidate.length) {
           continue;

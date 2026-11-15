@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../barcode/models/barcode_configuration.dart';
 import '../../excel_import/models/excel_data.dart';
 import '../../layout_designer/models/layout_configuration.dart';
+import '../../../core/utils/pdf_fonts.dart';
 import 'pdf_generation_service.dart';
 
 final pdfBatchServiceProvider = Provider<PdfBatchService>(
@@ -25,7 +26,7 @@ class PdfCancelledException implements Exception {
 /// memory stays flat and the UI never freezes, even for 10 lakh records.
 class PdfBatchService {
   /// Candidates (= pages) per PDF file.
-  static const int chunkSize = 5000;
+  static const int chunkSize = 1000;
 
   /// Number of candidates shown in the preview screen.
   static const int previewCount = 5;
@@ -108,12 +109,14 @@ class PdfBatchService {
     _validate(data, barcode);
 
     final count = min(previewCount, data!.recordCount);
+    final fonts = await PdfFonts.load();
 
     return _runPreviewInIsolate(
       _candidates(data, 0, count),
       _barcodeValues(barcode, 0, count),
       barcode,
       layout,
+      fonts,
     );
   }
 
@@ -129,6 +132,7 @@ class PdfBatchService {
     _validate(data, barcode);
 
     final excel = data!;
+    final fonts = await PdfFonts.load();
     await outDir.create(recursive: true);
 
     final total = excel.recordCount;
@@ -155,6 +159,7 @@ class PdfBatchService {
             _barcodeValues(barcode, from, to),
             barcode,
             layout,
+            fonts,
           );
         } catch (_) {
           failed = true;
@@ -184,6 +189,7 @@ Future<Uint8List> _runPreviewInIsolate(
   List<String> codes,
   BarcodeConfiguration barcode,
   LayoutConfiguration layout,
+  PdfFontBytes fonts,
 ) {
   return Isolate.run(
     () => PdfGenerationService().generate(
@@ -191,6 +197,7 @@ Future<Uint8List> _runPreviewInIsolate(
       barcodeValues: codes,
       barcodeConfiguration: barcode,
       layout: layout,
+      fonts: fonts,
     ),
   );
 }
@@ -201,6 +208,7 @@ Future<void> _writeChunkInIsolate(
   List<String> codes,
   BarcodeConfiguration barcode,
   LayoutConfiguration layout,
+  PdfFontBytes fonts,
 ) {
   return Isolate.run(() async {
     final bytes = await PdfGenerationService().generate(
@@ -208,6 +216,7 @@ Future<void> _writeChunkInIsolate(
       barcodeValues: codes,
       barcodeConfiguration: barcode,
       layout: layout,
+      fonts: fonts,
     );
 
     await File(path).writeAsBytes(bytes, flush: true);

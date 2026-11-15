@@ -105,7 +105,14 @@ final layoutWarningsProvider = Provider<List<LayoutWarning>>((ref) {
   final availableWidth = detailsBox.width - padding;
   final availableHeight = detailsBox.height - padding;
 
+  // Blank lines between fields (same calculation as the PDF).
+  final gap = LayoutConfiguration.lineSpacingInPoints(
+    configuration.lineSpacing,
+    fontSize,
+  );
+
   var requiredHeight = 0.0;
+  var countedFields = 0;
 
   for (final columnIndex in selectedColumns) {
     if (columnIndex >= headers.length || columnIndex >= worstCase.length) {
@@ -144,7 +151,10 @@ final layoutWarningsProvider = Provider<List<LayoutWarning>>((ref) {
         ? valuePainter.height
         : labelPainter.height;
 
-    requiredHeight += lineHeight + configuration.fieldSpacing;
+    // The gap is added only BETWEEN fields, not after the last one.
+    if (countedFields > 0) requiredHeight += gap;
+    requiredHeight += lineHeight;
+    countedFields++;
   }
 
   if (requiredHeight > availableHeight) {

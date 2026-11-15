@@ -151,6 +151,19 @@ class LayoutControls extends StatelessWidget {
 
         const SizedBox(height: 22),
 
+        _sectionTitle('LINE SPACING'),
+        const SizedBox(height: 4),
+        const Text(
+          'Blank lines between the details, for example between Roll '
+          'Number, Register Number, DOB and Gender.',
+          style: TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+        const SizedBox(height: 6),
+
+        _lineSpacingControl(),
+
+        const SizedBox(height: 22),
+
         _sectionTitle('BARCODE NUMBER'),
         const SizedBox(height: 8),
 
@@ -239,6 +252,57 @@ class LayoutControls extends StatelessWidget {
     );
   }
 
+  Widget _lineSpacingControl() {
+    const minValue = LayoutConfiguration.minLineSpacing;
+    const maxValue = LayoutConfiguration.maxLineSpacing;
+    const step = LayoutConfiguration.lineSpacingStep;
+
+    final value = configuration.lineSpacing;
+    final divisions = ((maxValue - minValue) / step).round();
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Text('Spacing between fields'),
+            const Spacer(),
+            IconButton(
+              tooltip: 'Decrease by 0.1',
+              visualDensity: VisualDensity.compact,
+              onPressed: value <= minValue
+                  ? null
+                  : () => notifier.updateLineSpacing(value - step),
+              icon: const Icon(Icons.remove_circle_outline, size: 20),
+            ),
+            SizedBox(
+              width: 70,
+              child: Text(
+                '${value.toStringAsFixed(1)} lines',
+                textAlign: TextAlign.center,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Increase by 0.1',
+              visualDensity: VisualDensity.compact,
+              onPressed: value >= maxValue
+                  ? null
+                  : () => notifier.updateLineSpacing(value + step),
+              icon: const Icon(Icons.add_circle_outline, size: 20),
+            ),
+          ],
+        ),
+        Slider(
+          value: value.clamp(minValue, maxValue),
+          min: minValue,
+          max: maxValue,
+          divisions: divisions,
+          label: value.toStringAsFixed(1),
+          onChanged: notifier.updateLineSpacing,
+        ),
+      ],
+    );
+  }
+
   Widget _dimensionSlider({
     required String label,
     required double value,
@@ -246,6 +310,7 @@ class LayoutControls extends StatelessWidget {
     required double max,
     required ValueChanged<double> onChanged,
     String suffix = 'pt',
+    int? divisions,
   }) {
     final safeValue = value.clamp(min, max);
 
@@ -258,7 +323,13 @@ class LayoutControls extends StatelessWidget {
             Text('${value.toStringAsFixed(0)} $suffix'),
           ],
         ),
-        Slider(value: safeValue, min: min, max: max, onChanged: onChanged),
+        Slider(
+          value: safeValue,
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
+        ),
       ],
     );
   }

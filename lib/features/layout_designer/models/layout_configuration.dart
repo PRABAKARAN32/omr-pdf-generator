@@ -45,13 +45,35 @@ class LayoutConfiguration {
   static const double pageWidth = 595.28;
   static const double pageHeight = 841.89;
 
+  /// Line spacing = number of blank lines between two detail fields.
+  /// Decimal values are allowed (for example 1.1, 1.2, 1.4, 1.6).
+  static const double minLineSpacing = 0.0;
+  static const double maxLineSpacing = 5.0;
+  static const double defaultLineSpacing = 2.0;
+
+  /// Size of one step of the slider and of the + / - buttons.
+  static const double lineSpacingStep = 0.1;
+
+  /// Height of one blank line, relative to the font size.
+  /// This is the ONLY place to change if the spacing looks too big/small.
+  static const double _lineHeightFactor = 1.2;
+
+  /// Converts "N blank lines" into PDF points for the given font size.
+  /// Used by the A4 preview, the layout warnings and the PDF itself, so
+  /// all three always agree.
+  static double lineSpacingInPoints(double lines, double fontSize) {
+    return lines * fontSize * _lineHeightFactor;
+  }
+
   final LayoutBox detailsBox;
   final LayoutBox barcodeBox;
   final LayoutBoxType selectedBox;
 
   final double movementStep;
   final double detailsFontSize;
-  final double fieldSpacing;
+
+  /// Blank lines between the detail fields (0.0 to 5.0, default 2.0).
+  final double lineSpacing;
 
   final bool showBarcodeNumber;
   final LayoutTextStyle textStyle;
@@ -71,7 +93,7 @@ class LayoutConfiguration {
     this.selectedBox = LayoutBoxType.details,
     this.movementStep = 2,
     this.detailsFontSize = 10,
-    this.fieldSpacing = 2,
+    this.lineSpacing = defaultLineSpacing,
     this.showBarcodeNumber = false,
     this.textStyle = LayoutTextStyle.bold,
     this.applyDetailsToAll = true,
@@ -90,7 +112,7 @@ class LayoutConfiguration {
     LayoutBoxType? selectedBox,
     double? movementStep,
     double? detailsFontSize,
-    double? fieldSpacing,
+    double? lineSpacing,
     bool? showBarcodeNumber,
     LayoutTextStyle? textStyle,
     bool? applyDetailsToAll,
@@ -104,7 +126,7 @@ class LayoutConfiguration {
       selectedBox: selectedBox ?? this.selectedBox,
       movementStep: movementStep ?? this.movementStep,
       detailsFontSize: detailsFontSize ?? this.detailsFontSize,
-      fieldSpacing: fieldSpacing ?? this.fieldSpacing,
+      lineSpacing: lineSpacing ?? this.lineSpacing,
       showBarcodeNumber: showBarcodeNumber ?? this.showBarcodeNumber,
       textStyle: textStyle ?? this.textStyle,
       applyDetailsToAll: applyDetailsToAll ?? this.applyDetailsToAll,
@@ -121,7 +143,7 @@ class LayoutConfiguration {
       'selectedBox': selectedBox.name,
       'movementStep': movementStep,
       'detailsFontSize': detailsFontSize,
-      'fieldSpacing': fieldSpacing,
+      'lineSpacing': lineSpacing,
       'showBarcodeNumber': showBarcodeNumber,
       'textStyle': textStyle.name,
       'applyDetailsToAll': applyDetailsToAll,
@@ -172,8 +194,10 @@ class LayoutConfiguration {
       detailsFontSize:
           (json['detailsFontSize'] as num?)?.toDouble() ??
           defaults.detailsFontSize,
-      fieldSpacing:
-          (json['fieldSpacing'] as num?)?.toDouble() ?? defaults.fieldSpacing,
+      lineSpacing:
+          ((json['lineSpacing'] as num?)?.toDouble() ?? defaults.lineSpacing)
+              .clamp(minLineSpacing, maxLineSpacing)
+              .toDouble(),
       showBarcodeNumber:
           json['showBarcodeNumber'] as bool? ?? defaults.showBarcodeNumber,
       textStyle: LayoutTextStyle.values.firstWhere(

@@ -164,9 +164,22 @@ class LayoutConfigurationNotifier extends Notifier<LayoutConfiguration> {
     state = state.copyWith(detailsFontSize: value);
   }
 
-  void updateFieldSpacing(double value) {
-    if (value < 0) return;
-    state = state.copyWith(fieldSpacing: value);
+  /// Blank lines between the detail fields, in steps of 0.1.
+  /// Always kept between 0.0 and 5.0.
+  void updateLineSpacing(double value) {
+    // Round to one decimal so values like 1.2000000000000002 never appear.
+    final rounded = (value * 10).round() / 10;
+
+    final lines = rounded
+        .clamp(
+          LayoutConfiguration.minLineSpacing,
+          LayoutConfiguration.maxLineSpacing,
+        )
+        .toDouble();
+
+    if ((lines - state.lineSpacing).abs() < 0.0001) return;
+
+    state = state.copyWith(lineSpacing: lines);
   }
 
   void updateShowBarcodeNumber(bool value) {

@@ -159,7 +159,7 @@ class _LayoutDesignerScreenState extends ConsumerState<LayoutDesignerScreen> {
           ),
 
           Tooltip(
-            message: 'Zoom into the top half of the A4 page',
+            message: 'Zoom in. Use the side scroll bar or mouse wheel to move down the page',
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -171,7 +171,7 @@ class _LayoutDesignerScreenState extends ConsumerState<LayoutDesignerScreen> {
                     });
                   },
                 ),
-                const Text('Zoom first half'),
+                const Text('Zoom in'),
               ],
             ),
           ),

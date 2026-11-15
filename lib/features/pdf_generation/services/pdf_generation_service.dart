@@ -3,18 +3,19 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/utils/pdf_fonts.dart';
 import '../../barcode/models/barcode_configuration.dart';
 import '../../layout_designer/models/layout_configuration.dart';
 
 class PdfGenerationService {
   static const double _contentPadding = 6.0;
-  static const double _labelValueGap = 3.0;
 
   Future<Uint8List> generate({
     required List<Map<String, String>> candidates,
     required List<String> barcodeValues,
     required BarcodeConfiguration barcodeConfiguration,
     required LayoutConfiguration layout,
+    required PdfFontBytes fonts,
   }) async {
     if (candidates.isEmpty) {
       throw ArgumentError('There are no candidate records to generate.');
@@ -31,10 +32,14 @@ class PdfGenerationService {
       );
     }
 
-    final document = pw.Document();
+    // Arial only. The font is also set as the document theme so that no
+    // widget can fall back to the built-in Helvetica.
+    final regularFont = pw.Font.ttf(ByteData.sublistView(fonts.regular));
+    final boldFont = pw.Font.ttf(ByteData.sublistView(fonts.bold));
 
-    final regularFont = pw.Font.helvetica();
-    final boldFont = pw.Font.helveticaBold();
+    final document = pw.Document(
+      theme: pw.ThemeData.withFont(base: regularFont, bold: boldFont),
+    );
 
     final selectedFont = layout.textStyle == LayoutTextStyle.bold
         ? boldFont
@@ -67,7 +72,10 @@ class PdfGenerationService {
                         candidate: candidate,
                         font: selectedFont,
                         fontSize: layout.detailsFontSize,
-                        spacing: layout.fieldSpacing,
+                        spacing: LayoutConfiguration.lineSpacingInPoints(
+                          layout.lineSpacing,
+                          layout.detailsFontSize,
+                        ),
                       ),
                     ),
                   ),
